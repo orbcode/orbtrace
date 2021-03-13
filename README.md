@@ -1,7 +1,7 @@
 ORBTrace Development
 ====================
 
-This is the repository for the ORBTrace debug tool, targetting ARM CORTEX JTAG & SWD debug and  parallel TRACE, supporting Orbuculum.  This code was forked from Orbuculum on 13th March 2021. Change history prior to that point is contained in the Orbuculum repository. History starts afresh in this repository but, apart from documentation (this file), there is no discontinuity between the two.
+This is the repository for the ORBTrace debug tool, targetting ARM CORTEX JTAG & SWD debug and  parallel TRACE, supporting Orbuculum.  This code was forked from Orbuculum on 13th March 2021. Change history prior to that point is contained in the Orbuculum repository. History starts afresh in this repository but, apart from documentation (this file) and some directory cleanup, there is no discontinuity between the two and there are certainly no code changes.
 
 This is built using Claire Wolfs' icestorm toolchain and currently targets a either a lattice iCE40HX-8K board or an Lambda Concept ECPIX-5 board (by default a -85F, but that's a trivial change in the makefile).
 

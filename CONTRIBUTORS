@@ -1,0 +1,23 @@
+The contributors to orbuculum and, by extension, orbtrace,
+in alphabetic order, are;
+
+Jan Christoph Bernack
+Uwe Bonnes             bon@elektron.ikp.physik.tu-darmstadt.de *
+David Girault          david.f.girault@gmail.com               *
+Tom Keddie             github@bronwenandtom.com
+Francois Killeen       killeenfrancois@gmail.com
+Andrew Kohlsmith
+Devan Lai              devan.lai@gmail.com                     *
+Dave Marples           dave@marples.net                        *
+David Piegdon          david@piegdon.de                        *
+Karl Palsson           karlp@tweak.net.au                      *
+Stoyan Shopov          stoyan.shopov@gmail.com
+David Sidrane          david_s5@nscdg.com                      *
+
+ Note that contributors marked * made some contributions to Orbuculum while
+ that was under a GPL licence. Each kindly agreed by email
+ for their contributions to re-licenced to BSD, MIT or Apache
+ as selected by Dave Marples in his role as primary author
+ and maintainer. Email references for each partys' agreement are
+ in the Orbuculum repository. The code comprising Orbtrace wasn't
+ affected.
