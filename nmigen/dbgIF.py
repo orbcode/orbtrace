@@ -2,6 +2,9 @@ from nmigen                  import *
 from nmigen.hdl.xfrm         import DomainRenamer
 from nmigen.lib.fifo         import SyncFIFOBuffered
 
+# Glue to connect nmigen world (cmsis_dap) to verilog world
+# =========================================================
+
 class DBGIF(Elaboratable):
     def __init__(self, dbgpins):
         self.dbgpins      = dbgpins;
@@ -15,14 +18,15 @@ class DBGIF(Elaboratable):
         self.dread        = Signal(32);
         self.perr         = Signal();
         self.go           = Signal();
+        self.postedMode   = Signal();
         self.pins_write   = Signal();
         self.done         = Signal();
+        self.again        = Signal();
+        self.ignoreData   = Signal();
         self.ack          = Signal(3);
         self.pinsin       = Signal(16);
         self.pinsout      = Signal(8);
         self.command      = Signal(4);
-        self.c = Signal();
-
         
     def elaborate(self, platform):
         
@@ -53,16 +57,17 @@ class DBGIF(Elaboratable):
             o_nvdrive_pin     = self.dbgpins.nvdriveen,
 
             # Upwards interface to command controller
-	    i_addr32  = self.addr32, 
-            i_rnw     = self.rnw, 
-            i_apndp   = self.apndp,
-            o_ack     = self.ack,
-            i_dwrite  = self.dwrite,
-            o_dread   = self.dread,
-            i_pinsin  = self.pinsin,
-            o_pinsout = self.pinsout,
-
-            o_c = self.c,
+	    i_addr32     = self.addr32, 
+            i_rnw        = self.rnw, 
+            i_apndp      = self.apndp,
+            o_again      = self.again,
+            o_ignoreData = self.ignoreData,
+            o_postedMode = self.postedMode,
+            o_ack        = self.ack,
+            i_dwrite     = self.dwrite,
+            o_dread      = self.dread,
+            i_pinsin     = self.pinsin,
+            o_pinsout    = self.pinsout,
 
             i_command = self.command,
             i_go      = self.go,

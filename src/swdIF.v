@@ -21,7 +21,8 @@ module swdIF (
         // Configuration
                 input [1:0]       turnaround, // Clock ticks per turnaround
                 input             dataphase,  // Does a dataphase follow WAIT/FAULT?
-                
+                input [7:0]       idleCycles, // How many idlecycles to apply after transfer                
+
 	// Upwards interface to command controller
                 input [1:0]       addr32,   // Address bits 3:2 for message
                 input             rnw,      // Set for read, clear for write
@@ -31,7 +32,6 @@ module swdIF (
                 output reg [31:0] dread,    // Data read from target
                 output reg        perr,     // Indicator of a parity error in the transfer
 
-output reg c,
                 input             go,       // Trigger
                 output            idle      // Response
 		);		  
@@ -69,7 +69,7 @@ output reg c,
 	if (rst)
 	  begin
              swd_state <= ST_IDLE;
-             swwr      <= 0;
+             swwr      <= 1;
              perr      <= 0;
 	  end
 	else
@@ -103,7 +103,7 @@ output reg c,
              case (swd_state)
                ST_IDLE: // Idle waiting for something to happen ===============================
                  begin
-                    swwr    <= 1'b1;      // While idle we're in output mode
+                    swwr    <= 1'b1;             // While idle we're in output mode
                     
                     // Things are about to kick off, put the leading 1 on the line
                     if ((go) && (fallingedge))
@@ -130,7 +130,7 @@ output reg c,
                          bitcount <= bitcount-1;
                       end
 
-                    if (!bitcount)
+                    if ((!bitcount) & (risingedge))
                       begin
                          bitcount  <= turnaround+1;
                          swd_state <= ST_TRN1;
@@ -140,16 +140,14 @@ output reg c,
                ST_TRN1: // Performing turnaround =============================================
                  begin
                     if (fallingedge)
-                      begin
-                         bitcount <= bitcount - 1;
-                      end
+                      bitcount <= bitcount - 1;
                
-                      if (!bitcount)
-                        begin
-                           swwr      <= 1'b0;                         
-                           bitcount  <= 3;
-                           swd_state <= ST_ACK;
-                        end
+                    if ((!bitcount) & risingedge)
+                      begin
+                         swwr      <= 0;                         
+                         bitcount  <= 3;
+                         swd_state <= ST_ACK;
+                      end
                  end // case: ST_TRN1
 
                ST_ACK: // Collect the ack bits ===============================================
@@ -160,7 +158,7 @@ output reg c,
                          bitcount <= bitcount-1;
                       end
 
-                    if (!bitcount)
+                    if ((!bitcount) && (risingedge))
                       begin
                          // Check what kind of ack we got
                          if (ack_in==3'b001)
@@ -172,31 +170,30 @@ output reg c,
                                 end
                               else
                                 begin
-                                   bitcount <= turnaround + 1;
+                                   bitcount <= turnaround+1;
                                    swd_state <= ST_TRN2;
                                 end
                            end
                          else
                            begin
                               // Wasn't good, give up and return idle, via cooloff
-                              swwr      <= 1'b1;
+                              swwr      <= 1'b0;
                               bitcount  <= dataphase?33:1;
                               swd_state <= ST_COOLING;
                            end // else: !if(ack_in==3'b001)
                       end // if ((fallingedge) && (!bitcount))
                  end // case: ST_ACK
                
-               ST_TRN2: // One and a half turnaround time =====================================
+               ST_TRN2: // Turnaround for write time =====================================
                  begin
                     if (fallingedge)
-                      begin
-                         swwr     <= 1'b1;
-                         bitcount <= bitcount - 1;
-                      end
-               
-                      if (!bitcount)
+                      bitcount <= bitcount - 1;
+
+                    if ((!bitcount) && risingedge)
                         begin
-                           bitcount  <= 32;
+                           // Data write includes the parity bit at the end
+                           bitcount  <= 33;
+                           swwr      <= 1;
                            bits      <= dwrite;
                            swd_state <= ST_DWRITE;
                         end
@@ -218,19 +215,23 @@ output reg c,
                ST_DWRITE: // Writing 32 bit value ======================================
                  begin
                     if (fallingedge)
-                      begin
-                         bits     <= {1'b0,bits[31:1]};
-                         swdo     <= bits[0];
-                         par      <= par^bits[0];
-                         bitcount <= bitcount-1;
-                         if (!bitcount)
-                           begin
-                              // This is the cycle after full word transmission
-                              swdo <= par;
-                              bitcount  <= go?1:8;
-                              swd_state <= ST_COOLING;
-                           end
-                      end
+                      if (!bitcount)
+                        begin
+                           // This is the cycle after full word transmission
+                           // Note the cooling is needed according to STM32F427 reference
+                           // manual RM0090 Rev 19 Section 38.8.4. Thanks guys, well hidden.
+                           swdo <= 0;
+                           bitcount <= idleCycles+2;
+                           swd_state <= ST_COOLING;
+                        end
+                      else
+                        begin
+                           bits     <= {1'b0,bits[31:1]};
+                           swwr     <= 1;
+                           swdo     <= (bitcount==1)?par:bits[0];
+                           par      <= par^bits[0];
+                           bitcount <= bitcount-1;
+                        end
                  end
                
                ST_DREADPARITY: // Reading parity ======================================
@@ -238,10 +239,10 @@ output reg c,
                    begin
                       // Need to turn the link so it's ready for next tx
                       perr      <= par^swdi;
-                      bitcount  <= 2;
+                      bitcount  <= idleCycles+1;
+                      swwr      <= 1;
+                      swdo      <= 0;
                       swd_state <= ST_COOLING;
-                      swwr      <= 1'b1;
-                      swdo      <= 1'b0;
                    end
 
                ST_COOLING: // Cooling the link before shutting it =====================
@@ -250,12 +251,14 @@ output reg c,
                       begin
                          ack       <= ack_in;
                          dread     <= bits;
-                         swdo      <= 1'b0;
-                         swwr      <= 1'b1;
-                         bitcount<=bitcount-1;
+                         bitcount  <= bitcount-1;
                       end
                     if (!bitcount)
-                      swd_state <= ST_IDLE;
+                      begin
+                         swdo      <= 0;
+                         swwr      <= 1;
+                         swd_state <= ST_IDLE;
+                      end
                  end
              endcase // case (swd_state)
           end // else: !if(rst)

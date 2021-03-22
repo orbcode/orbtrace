@@ -63,6 +63,7 @@
 //
 //  CMD_SET_RST_TMR : Set reset and reset guard time in uS
 //
+// CMD_SET_TFR_CFG
 
 module dbgIF #(parameter CLK_FREQ=125000000, parameter DEFAULT_SWCLK=1000000, parameter DEFAULT_RST_TIMEOUT_USEC=300) (
 		input             rst,
@@ -80,7 +81,6 @@ module dbgIF #(parameter CLK_FREQ=125000000, parameter DEFAULT_SWCLK=1000000, pa
                 output            tdi,             // TDI pin to target
                 input             tdo_swo,         // TDO/SWO pin from target
                 input             tgt_reset_state, // Current state of tgt_reset 
-
                 output            tgt_reset_pin,   // Output pin to pull target reset low
                 output            nvsen_pin,       // Output pin to control vsen
                 output            nvdrive_pin,     // Output pin to control vdrive
@@ -90,21 +90,24 @@ module dbgIF #(parameter CLK_FREQ=125000000, parameter DEFAULT_SWCLK=1000000, pa
                 input             rnw,             // Set for read, clear for write
                 input             apndp,           // AP(1) or DP(0) access?
                 output [2:0]      ack,             // Most recent ack status
+
                 input  [31:0]     dwrite,          // Most recent data or parameter to write
                 output [31:0]     dread,           // Data read from target
                 input  [15:0]     pinsin,          // Pin setting information to target (upper 8 bits mask)
                 output [7:0]      pinsout,         // Pin information from target 
                
-output c,
         // Event triggers and responses
                 input [3:0]       command,         // Command to be performed 
                 input             go,              // Trigger
                 output            done,            // Response
-                output reg        perr             // Indicator of a error in the transfer
+                output reg        perr,            // Indicator of a error in the transfer
+
+        // Posted read management
+                output reg        postedMode,      // Flag indicating we're in posted mode
+                output reg        ignoreData,      // Ignore the data returned from this call (for the case of the start of posted read)
+                output reg        again,           // Take the data returned from this call as last AP read, then repeat the request
 	      );
 
-   assign c=done;
-   
    parameter TICKS_PER_USEC=CLK_FREQ/1000000;
    parameter DEFAULT_IF_TICKS_PER_CLK=((CLK_FREQ+(DEFAULT_SWCLK>>1))/(DEFAULT_SWCLK<<1))-1;
    
@@ -121,6 +124,7 @@ output c,
    parameter CMD_WAIT        = 9;
    parameter CMD_CLR_ERR     = 10;
    parameter CMD_SET_RST_TMR = 11;
+   parameter CMD_SET_TFR_CFG = 12;
 
    // Comms modes
    parameter MODE_PWRDOWN = 0;
@@ -168,7 +172,7 @@ output c,
    assign swwr      = (active_mode==MODE_SWD)?swd_swwr  :(active_mode==MODE_SWJ)?pinw_swwr :1'b1;
    assign tdi       = (active_mode==MODE_SWD)?1'b1      :(active_mode==MODE_SWJ)?pinw_tdi  :1'b1;
    assign ack       = (active_mode==MODE_SWD)?swd_ack   :0;
-   assign dread     = (active_mode==MODE_SWD)?swd_dread :32'h10203040;
+   assign dread     = (active_mode==MODE_SWD)?swd_dread :32'hdeadcafe;
 
    assign done = (dbg_state==ST_DBG_IDLE);
 
@@ -182,16 +186,19 @@ output c,
               .swwr(swd_swwr),
               .turnaround(turnaround),
               .dataphase(dataphase),
-                
-              .addr32(addr32),
-              .rnw(rnw),
-              .apndp(apndp),
+              .idleCycles(idleCycles),
+
+              // If this is the end of a AP read sequence it needs to be overridden
+              // With a RDBUFF read, no matter what was originally asked for.
+              .addr32(readRDBUFF?2'd3:addr32),
+              .rnw(readRDBUFF?1'b1:rnw),
+              .apndp(readRDBUFF?1'b0:apndp),
+                       
               .dwrite(dwrite[31:0]),
               .ack(swd_ack),
               .dread(swd_dread),
               .perr(swd_perr),
 
-              .c(c),
               .go(if_go && (active_mode==MODE_SWD)),
               .idle(swd_idle)
 	      );
@@ -199,6 +206,8 @@ output c,
    reg [10:0]                     clkDiv;          // Divisor per clock change to target
    reg [1:0]                      turnaround;      // Number of cycles for turnaround when in SWD mode
    reg                            dataphase;       // Indicator of if a dataphase is needed on WAIT/FAULT
+   reg [7:0]                      idleCycles;      // Number of cycles before return to idle
+   
    reg [22:0]                     rst_timeout;     // Default time for a reset
    
    reg [1:0]                      active_mode;     // Mode that the interface is actually in
@@ -206,7 +215,8 @@ output c,
    reg [3:0]                      dbg_state;       // Current state of debug handler
    reg [8:0]                      state_step;      // Stepping through comms states
    reg                            next_swclk;      // swclk pre-calcuation
-
+   reg                            readRDBUFF;      // Flag to read RDBUFF rather than commanded register
+   
    parameter ST_DBG_IDLE                 = 0;
    parameter ST_DBG_RESETTING            = 1;
    parameter ST_DBG_RESET_GUARD          = 2;
@@ -220,14 +230,13 @@ output c,
    parameter ST_DBG_CALC_DIV             = 10;
    
    // Active low reset on target
-   assign tgt_reset_pin = (active_mode==MODE_SWJ)?pinw_nreset:(dbg_state!=ST_DBG_RESETTING);
+   assign tgt_reset_pin = ~((active_mode==MODE_SWJ)?pinw_nreset:(dbg_state!=ST_DBG_RESETTING));
 
    // Always reflect current state of pins
    assign pinsout={ tgt_reset_pin, tgt_reset_state, 1'b1, swwr, tdo_swo, tdi, swdi, tck_swclk };
 
    // Edge flagging (These are the opposite of what you expect because of clock delay)
    wire                           anedge=(!cdivcount);
-   wire                           risingedge  = (anedge && (!next_swclk));
    wire                           fallingedge = (anedge && next_swclk);
    
    always @(posedge clk, posedge rst)
@@ -242,12 +251,15 @@ output c,
              normal_swclk<= 1;
              pinw_swdo   <= 0;
              pinw_swwr   <= 1;
+             idleCycles  <= 0;
              cdivcount   <= 1;
              clkDiv      <= DEFAULT_IF_TICKS_PER_CLK;
              rst_timeout <= DEFAULT_RST_TIMEOUT_USEC;
              dbg_state   <= ST_DBG_IDLE;
+             readRDBUFF  <= 0;
              perr        <= 0;
              if_go       <= 0;
+             postedMode  <= 0;
              active_mode    <= MODE_PWRDOWN;
              commanded_mode <= MODE_PWRDOWN;
 	  end
@@ -267,20 +279,17 @@ output c,
              
                
              // The usecs counter can run all of the time, it's independent
-             //usecsdiv<=usecsdiv?usecsdiv-1:TICKS_PER_USEC-1;
-             
-             if (usecsdiv)
-               usecsdiv <= usecsdiv - 1;
-             else
+             usecsdiv<=usecsdiv?usecsdiv-1:TICKS_PER_USEC-1;             
+             if (usecsdiv==0)
                begin
                   usecsdiv <= TICKS_PER_USEC-1;
                   usecsdown <= usecsdown - 1;
                end
 
-             normal_swclk <= next_swclk;
+             if ((dbg_state!=ST_DBG_IDLE) || (normal_swclk!=1))
+               normal_swclk <= next_swclk;
              
-             // We change state on a falling edge
-             // We write to line on a rising edge
+             // We do everything on falling edges
              case(dbg_state)
                ST_DBG_IDLE: // Command request ========================================================
                  if (cdc_go==2'b11)
@@ -295,12 +304,14 @@ output c,
                                   // We're going into SWJ, so start with the defined states of the pins
                                   active_mode <= MODE_SWJ;
                                   pinw_swdo   <= tms_swdo;
-                                  //pinw_swclk  <= next_swclk;
                                   pinw_swwr   <= swwr;
                                   pinw_nreset <= tgt_reset_pin;
                                end
                              
                              usecsdown   <= dwrite[31:0];
+
+                             // All bets are off on posting, don't even try
+                             postedMode  <= 0;
                              
                              // Now update these bits if they're requested for updating
                              pinw_swclk  <= pinsin[8] ?pinsin[0]:1'b1;
@@ -320,19 +331,40 @@ output c,
                
                         CMD_RESET: // Reset target ---------------------------------
                           if (fallingedge)
-                          begin
-                             usecsdown <= rst_timeout;
-                             usecsdiv <= TICKS_PER_USEC-1;                             
-                             dbg_state <= ST_DBG_RESETTING;
-                          end
+                            begin
+                               postedMode <= 0;
+                               usecsdown <= rst_timeout;
+                               usecsdiv <= TICKS_PER_USEC-1;                             
+                               dbg_state <= ST_DBG_RESETTING;
+                            end
                         
                         CMD_TRANSACT: // Execute transaction on target interface ---
                           if (fallingedge)
-                          begin
-                             if_go       <= 1'b1;
-                             active_mode <= commanded_mode;
-                             dbg_state   <= ST_DBG_WAIT_INFERIOR_START;
-                          end
+                            begin
+                               // These signals are only active for the duration of a single transaction
+                               ignoreData <= 0;
+                               again      <= 0;
+                               readRDBUFF <= 0;
+                               
+                               if (postedMode && ~(rnw && apndp))
+                                 begin
+                                    // We are leaving posted mode, read the last octet and indicate this one should be sent again
+                                    postedMode <= 1'b0;
+                                    again      <= (addr32!=3);
+                                    readRDBUFF <= 1'b1;
+                                 end
+                               else
+                                 if (rnw && apndp && (~postedMode))
+                                 begin
+                                    // We are entering posted mode warn upstairs to ignore this data
+                                    postedMode <= 1'b1;
+                                    ignoreData <= 1'b1;
+                                 end
+                               
+                               if_go       <= 1'b1;
+                               active_mode <= commanded_mode;
+                               dbg_state   <= ST_DBG_WAIT_INFERIOR_START;
+                            end
                         
                         CMD_SET_SWD: // Set SWD mode -------------------------------
                           if (fallingedge)
@@ -340,11 +372,12 @@ output c,
                              commanded_mode <= MODE_SWD;
                              active_mode    <= MODE_SWJ;
                              pinw_swdo      <= tms_swdo;
-                             pinw_swwr      <= swwr;
+                             pinw_swwr      <= 1;
                              pinw_nreset    <= tgt_reset_pin;
                              state_step     <= 0;
                              scratchpad     <= 32'h0000e79e;
                              pinw_swclk     <= next_swclk;
+                             postedMode     <= 0;
                              dbg_state      <= ST_DBG_ESTABLISH_MODE;
                           end
                           
@@ -354,11 +387,12 @@ output c,
                              commanded_mode <= MODE_JTAG;
                              active_mode    <= MODE_SWJ;
                              pinw_swdo      <= tms_swdo;
-                             pinw_swwr      <= swwr;
+                             pinw_swwr      <= 1;
                              pinw_nreset    <= tgt_reset_pin;
                              state_step     <= 0;
                              scratchpad     <= 32'h0000E73C;
                              pinw_swclk     <= next_swclk;
+                             postedMode     <= 0;
                              dbg_state      <= ST_DBG_ESTABLISH_MODE;
                           end
                         
@@ -378,7 +412,7 @@ output c,
                              commanded_mode <= MODE_PWRDOWN;
                              active_mode    <= MODE_PWRDOWN;
                              pinw_swdo      <= tms_swdo;
-                             pinw_swwr      <= swwr;
+                             pinw_swwr      <= 0;
                              pinw_nreset    <= tgt_reset_pin;
                              pinw_swclk     <= next_swclk;                             
                              dbg_state      <= ST_DBG_WAIT_GOCLEAR;
@@ -409,6 +443,12 @@ output c,
                              dbg_state    <= ST_DBG_WAIT_GOCLEAR;
                           end
 
+                        CMD_SET_TFR_CFG: // Set idle cycles ------------------------
+                          begin
+                             idleCycles   <= dwrite[7:0];
+                             dbg_state    <= ST_DBG_WAIT_GOCLEAR;
+                          end
+                        
                         CMD_WAIT: // Wait for specified number of uS ---------------
                           begin
                              usecsdown    <= dwrite;
@@ -462,7 +502,7 @@ output c,
                         if (swd_idle)
                           begin
                              // This delberately goes to IDLE and not GO_CLEAR for streaming purposes
-                             dbg_state <= ST_DBG_IDLE;
+                             dbg_state <= ST_DBG_WAIT_GOCLEAR;
                              perr      <= swd_perr;
                           end
                       default:
@@ -518,9 +558,9 @@ output c,
                     if (anedge)
                       begin
                          // Stay in sync with clock that is given to inferiors
-                         if (risingedge)
+                         if (fallingedge)
                            begin
-                              // Our changes happen on the rising edge (i.e. pinw_swclk currently low)
+                              // Our changes happen on the falling edge (i.e. pinw_swclk currently high)
                               if ((state_step<50) || (state_step>65)) pinw_swdo<=1'b1;
                               else
                                 begin
@@ -530,7 +570,7 @@ output c,
                               if (state_step>115)
                                 pinw_swdo<=0;
                               state_step<=state_step+1;
-                           end // if (risingedge)
+                           end // if (falledge)
                          else
                            if (state_step==118)
                              begin

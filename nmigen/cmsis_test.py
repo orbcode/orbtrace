@@ -122,14 +122,18 @@ tests = (
     #( "Set clock to 10MHz",        b"\x11\x80\x96\x98\x00",         b"\x11\x00" ),
     #( "Set clock to 30MHz",        b"\x11\x80\xC3\xC9\x01",         b"\x11\x00" ),
      ( "Set clock to 192305Hz",       b"\x11\x31\xef\x02\x00",         b"\x11\x00" ),
-#    ( "DAP_Transfer (ReadDP0)",     b"\x05\x00\x01\x02",            b"\x05\x01\x01\x77\x14\xa0\x2b"     ),
+    ( "DAP_TransferBlock (ReadDP0)",     b"\x06\x00\x01\x00\x02",            b"\x06\x01\x00\x01\x77\x14\xa0\x2b"     ),
+    ( "DAP_TransferBlock (ReadDP0)",     b"\x05\x00\x03\x04\x00\x0f\x00\x50\x08\xf0\x00\x00\x00\x0f", b"\x05\x03\x01\x41\x00\x77\x04"),
+    
+#    ( "DAP_Transfer (ReadDP0)",      b"\x05\x00\x04\x00\x1e\x00\x00\x00\x08\x00\x00\x00\x00\x04\x00\x0f\x00\x06", b"\x05\x04\x01\x00\x00\xf0"),
+#     ( "DAP_Transfer (ReadDP0)",     b"\x05\x00\x01\x02",            b"\x05\x01\x01\x77\x14\xa0\x2b"     ),
+#     ( "DAP_Transfer (WriteDP4)",    b"\x05\x00\x01\x08\x00\x00\x00\xf0",            b"\x05\x01\x01"     ),    
 #    ( "DAP_Delay",                   b"\x09\x00\x01",                 b"\x09\x00" ),
-#    ( "DAP_Transfer (WriteDP4)",     b"\x05\x00\x01\x08\x00\x00\x00\x54",            b"\x05\x00\x01"     ),
+
 
 #    ( "DAP_SWJ_Sequence (8 bits)",     b"\x12\x10\xff\xaa",            b"\x12\x00"     ),
 #    ( "DAP_SWJ_Sequence (51 bits)",     b"\x12\x21\x01\x00\x00\x40\x01", b"\x12\x00"),
 
-    ( "DAP_SWJ_Sequence (Reset)",     b"\x12\x33\x01\x01\x01\x01\x01\xff\x00", b"\x12\x00"),    
 ###########################    
 #    ( "DAP_SWJ_Sequence (Reset)",     b"\x12\x33\xff\xff\xff\xff\xff\xff\xff", b"\x12\x00"),
 #    ( "DAP_SWJ_Sequence (JTAG->SWD)",     b"\x12\x10\x9e\xe7", b"\x12\x00"),
@@ -152,7 +156,7 @@ tests = (
 
 ##########################
     
-#    ( "DAP_SWJ_Sequence (51 bits)",     b"\x12\x33\x72\x05\x75\x94\x03\x79\x27\x93\x05", b"\x12\x00"),
+ #   ( "DAP_Transfer (ReadDP0)",     b"\x05\x00\x01\x02",            b"\x05\x01\x01\x77\x14\xa0\x2b"     ),        
     
 #    ( "DAP_Transfer (ReadDP4)",     b"\x05\x00\x01\x0A",            b"\x05\x01\x01\x00\x00\x00\x04"     ),
 #    ( "DAP_Transfer (ReadDP4)",     b"\x05\x00\x01\x0A",            b"\x05\x01\x01\x00\x00\x00\xf4"     ),    
