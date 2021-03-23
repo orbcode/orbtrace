@@ -58,9 +58,9 @@ class OrbtraceDevice(Elaboratable):
                 i.bInterfaceNumber = 0
                 i.iInterface = "CMSIS-DAP"
 
-          #      with i.EndpointDescriptor() as e:
-          #          e.bEndpointAddress = 0x80 | TRACE_ENDPOINT_NUMBER
-          #          e.wMaxPacketSize   = TRACE_ENDPOINT_SIZE
+#                with i.EndpointDescriptor() as e:
+#                    e.bEndpointAddress = 0x80 | TRACE_ENDPOINT_NUMBER
+#                    e.wMaxPacketSize   = TRACE_ENDPOINT_SIZE
 
                 with i.EndpointDescriptor() as e:
                     e.bEndpointAddress = 0x80 | CMSIS_DAP_IN_ENDPOINT_NUMBER
