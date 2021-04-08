@@ -23,7 +23,8 @@ DAP_CAPABILITIES         = 0x01             # SWD Debug only (for now)
 DAP_TD_TIMER_FREQ        = 0x3B9ACA00       # 1uS resolution timer
 DAP_TB_SIZE              = 500              # 500 bytes in trace buffer
 DAP_MAX_PACKET_COUNT     = 1                # 1 max packet count
-DAP_MAX_PACKET_SIZE      = 500              # 500 Bytes max packet size
+DAP_V1_MAX_PACKET_SIZE   = 64
+DAP_V2_MAX_PACKET_SIZE   = 500
 
 # CMSIS-DAP Protocol Messages
 # ===========================
@@ -117,7 +118,7 @@ class WideRam(Elaboratable):
         self.dat_r = Signal(32)
         self.dat_w = Signal(32)
         self.we    = Signal()
-        self.mem   = Memory(width=32, depth=DAP_MAX_PACKET_SIZE, init=[0xdeadbeef])
+        self.mem   = Memory(width=32, depth=DAP_V2_MAX_PACKET_SIZE, init=[0xdeadbeef])
 
     def elaborate(self, platform):
         m = Module()
@@ -136,13 +137,15 @@ class WideRam(Elaboratable):
 # ====================================
 
 class CMSIS_DAP(Elaboratable):
-    def __init__(self, streamIn, streamOut, dbgpins):
+    def __init__(self, streamIn, streamOut, dbgpins, v2Indication):
         # External interface
         self.running      = Signal()       # Flag for if target is running
         self.connected    = Signal()       # Flag for if target is connected
 
+        self.isV2         = v2Indication
         self.streamIn     = streamIn
         self.streamOut    = streamOut
+        self.isV1         = Signal()
         self.rxBlock      = Signal( 7*8 )  # Longest message we pickup is 6 bytes + command
         self.rxLen        = Signal(3)      # Rxlen to pick up
         self.rxedLen      = Signal(3)      # Rxlen picked up so far
@@ -215,7 +218,10 @@ class CMSIS_DAP(Elaboratable):
             with m.Case(0xFE): # Get the maximum Packet Count (BYTE)
                 m.d.usb+=[self.txLen.eq(6), self.txBlock[8:24].eq(Cat(C(1,8),C(DAP_MAX_PACKET_COUNT,8)))]
             with m.Case(0xFF): # Get the maximum Packet Size (SHORT).
-                m.d.usb+=[self.txLen.eq(6), self.txBlock[8:32].eq(Cat(C(2,8),C(DAP_MAX_PACKET_SIZE,16)))]
+                with m.If(self.isV2):
+                    m.d.usb+=[self.txLen.eq(6), self.txBlock[8:32].eq(Cat(C(2,8),C(DAP_V2_MAX_PACKET_SIZE,16)))]
+                with m.Else():
+                    m.d.usb+=[self.txLen.eq(6), self.txBlock[8:32].eq(Cat(C(2,8),C(DAP_V1_MAX_PACKET_SIZE,16)))]
             with m.Default():
                 self.RESP_Invalid(m)
     # -------------------------------------------------------------------------------------
@@ -249,7 +255,7 @@ class CMSIS_DAP(Elaboratable):
                     self.dbgif.go.eq(1)
                     ]
                 m.next = 'DAP_Wait_Connect_Done'
-                
+
         if (DAP_CAPABILITIES&(1<<1)):
             with m.If ((((self.rxBlock.word_select(1,8))==0) & (DAP_CONNECT_DEFAULT==2)) |
                        ((self.rxBlock.word_select(1,8))==2)):
@@ -466,7 +472,7 @@ class CMSIS_DAP(Elaboratable):
             m.next = 'RESPOND'
     # -------------------------------------------------------------------------------------
     # -------------------------------------------------------------------------------------
-            
+
     def RESP_SWO_Data_Setup(self, m):
         # <b:0x1C> <s:TraceCount>
         # Triggered at the start of a RESP SWO Data Sequence
@@ -573,7 +579,7 @@ class CMSIS_DAP(Elaboratable):
                 ]
             m.next = 'RESPOND'
 
-            
+
     def RESP_Transfer_Process(self, m):
         m.d.comb += self.tfrram.dat_w.eq(self.dbgif.dread)
         #m.d.usb += self.can.eq(~self.can)
@@ -692,6 +698,7 @@ class CMSIS_DAP(Elaboratable):
                                     # Debug interface is in posting mode, better do one final read to collect the data
                                     m.d.usb += [
                                         self.tfrReq.eq(0x0E), # Read RDBUFF
+                                        self.retries.eq(0),
                                         self.txb.eq(5)
                                     ]
                                 with m.Else():
@@ -790,7 +797,7 @@ class CMSIS_DAP(Elaboratable):
             ]
             m.next = 'RESPOND'
 
-            
+
 
     def RESP_TransferBlock_Process(self, m):
         m.d.comb += self.tfrram.dat_w.eq(self.dbgif.dread)
@@ -864,6 +871,7 @@ class CMSIS_DAP(Elaboratable):
                                     m.d.usb += [
                                         self.txBlock.bit_select(8,16).eq(self.txBlock.bit_select(8,16)-1),
                                         self.dbgif.rnw.eq(1),     # Read RDBUFF
+                                        self.retries.eq(0),
                                         self.dbgif.apndp.eq(0),
                                         self.dbgif.addr32.eq(3),
                                         self.txb.eq(4)

@@ -14,6 +14,7 @@ from usb_protocol.emitters   import DeviceDescriptorCollection
 
 
 from luna.usb2               import USBDevice, USBMultibyteStreamInEndpoint, USBStreamInEndpoint, USBStreamOutEndpoint
+from luna.gateware.stream.arbiter import StreamArbiter, StreamMultiplexer, StreamInterface
 from usb_protocol.types      import USBTransferType
 
 from orbtrace_platform_ecp5  import orbtrace_ECPIX5_85_Platform
@@ -28,14 +29,14 @@ CMSIS_DAPV1_IF                    = 0
 CMSIS_DAPV1_NAME                  = "CMSIS-DAPv1"
 CMSIS_DAPV1_IN_ENDPOINT_NUMBER    = 1
 CMSIS_DAPV1_IN_ENDPOINT_SIZE      = 64
-CMSIS_DAPV1_OUT_ENDPOINT_NUMBER   = 0
-CMSIS_DAPV1_OUT_ENDPOINT_SIZE     = 8
+CMSIS_DAPV1_OUT_ENDPOINT_NUMBER   = 1
+CMSIS_DAPV1_OUT_ENDPOINT_SIZE     = 64
 
 # Interface 1
 CMSIS_DAPV2_IF                    = 1
 CMSIS_DAPV2_NAME                  = "CMSIS-DAPv2"
 CMSIS_DAPV2_IN_ENDPOINT_NUMBER    = 2
-CMSIS_DAPV2_OUT_ENDPOINT_NUMBER   = 1
+CMSIS_DAPV2_OUT_ENDPOINT_NUMBER   = 2
 CMSIS_DAPV2_ENDPOINT_SIZE         = 512
 
 # Interface 2
@@ -57,6 +58,33 @@ RX_LED_STRETCH_BITS   = 26
 TX_LED_STRETCH_BITS   = 16
 OVF_LED_STRETCH_BITS  = 26
 HB_BITS               = 27
+
+class StreamMux(Elaboratable):
+    def __init__(self, s1, s2, domain="sync", direction="in"):
+        self.s1 = s1
+        self.s2 = s2
+        self._domain = domain
+        self._dir = direction
+        self.selB = Signal()
+        self.sout = StreamInterface()
+
+    def elaborate(self, platform):
+        m = Module()
+
+        if (self._dir=="in"):
+            with m.If(self.selB):
+                m.d.comb += self.sout.attach(self.s2)
+            with m.Else():
+                m.d.comb += self.sout.attach(self.s1)
+        else:
+            with m.If(self.selB):
+                m.d.comb += self.s2.attach(self.sout)
+            with m.Else():
+                m.d.comb += self.s1.attach(self.sout)
+
+        m = DomainRenamer(self._domain)(m)
+        return m
+
 
 class OrbtraceDevice(Elaboratable):
 
@@ -81,29 +109,42 @@ class OrbtraceDevice(Elaboratable):
                 i.bInterfaceNumber = CMSIS_DAPV1_IF
                 i.iInterface = CMSIS_DAPV1_NAME
 
+                i.bInterfaceClass = 3
+                i.bInterfaceSubclass = 0
+                i.bInterfaceProtocol = 0
+
+                # This is the HID descriptor
+                i.add_subordinate_descriptor(b"\x09\x21\x11\x01\x00\x01\x22\x21\x00")
+                descriptors.add_descriptor(b"\x06\x00\xFF\x09\x01\xA1\x01\x15\x00\x26\xFF\x00\x75\x08\x95\x40\x09\x01\x81"
+                                             b"\x02\x95\x40\x09\x01\x91\x02\x95\x01\x09\x01\xB1\x02\xC0",descriptor_type=0x22)
+
                 with i.EndpointDescriptor() as e:
                     e.bEndpointAddress = 0x80 | CMSIS_DAPV1_IN_ENDPOINT_NUMBER
                     e.wMaxPacketSize   = CMSIS_DAPV1_IN_ENDPOINT_SIZE
                     e.bmAttributes     = USBTransferType.INTERRUPT
-                    e.bInterval        = 4
+                    e.bInterval        = 2
 
                 with i.EndpointDescriptor() as e:
                     e.bEndpointAddress = CMSIS_DAPV1_OUT_ENDPOINT_NUMBER
                     e.wMaxPacketSize   = CMSIS_DAPV1_OUT_ENDPOINT_SIZE
                     e.bmAttributes     = USBTransferType.INTERRUPT
-                    e.bInterval        = 4
+                    e.bInterval        = 2
 
             with c.InterfaceDescriptor() as i:
                 i._collection = descriptors
                 i.bInterfaceNumber = CMSIS_DAPV2_IF
                 i.iInterface = CMSIS_DAPV2_NAME
+                i.bInterfaceClass = 0xff
+                i.bInterfaceSubclass = 0
+                i.bInterfaceProtocol = 0
 
+                # CMSIS-DAPv2 endpoints need to be in a specific order...
                 with i.EndpointDescriptor() as e:
-                    e.bEndpointAddress = 0x80 | CMSIS_DAPV2_IN_ENDPOINT_NUMBER
+                    e.bEndpointAddress = CMSIS_DAPV2_OUT_ENDPOINT_NUMBER
                     e.wMaxPacketSize   = CMSIS_DAPV2_ENDPOINT_SIZE
 
                 with i.EndpointDescriptor() as e:
-                    e.bEndpointAddress = CMSIS_DAPV2_OUT_ENDPOINT_NUMBER
+                    e.bEndpointAddress = 0x80 | CMSIS_DAPV2_IN_ENDPOINT_NUMBER
                     e.wMaxPacketSize   = CMSIS_DAPV2_ENDPOINT_SIZE
 
             with c.InterfaceDescriptor() as i:
@@ -129,6 +170,7 @@ class OrbtraceDevice(Elaboratable):
         self.tx_stretch  = Signal(TX_LED_STRETCH_BITS)
         self.ovf_stretch = Signal(OVF_LED_STRETCH_BITS)
         self.hb          = Signal(HB_BITS)
+        self.isV2        = Signal()
 
         # Individual LED conditions to be signalled
         self.hb_ind   = Signal()
@@ -165,27 +207,32 @@ class OrbtraceDevice(Elaboratable):
 
         # Add CMSIS_DAP endpoints
         # =======================
-        cmsisdapIn = USBStreamInEndpoint(
+        cmsisdapV1In = USBStreamInEndpoint(
             endpoint_number=CMSIS_DAPV1_IN_ENDPOINT_NUMBER,
             max_packet_size=CMSIS_DAPV1_IN_ENDPOINT_SIZE
         )
-        usb.add_endpoint(cmsisdapIn)
+        usb.add_endpoint(cmsisdapV1In)
 
-        cmsisdapIn = USBStreamInEndpoint(
+        cmsisdapV1Out = USBStreamOutEndpoint(
+            endpoint_number=CMSIS_DAPV1_OUT_ENDPOINT_NUMBER,
+            max_packet_size=CMSIS_DAPV1_OUT_ENDPOINT_SIZE
+        )
+        usb.add_endpoint(cmsisdapV1Out)
+
+        cmsisdapV2In = USBStreamInEndpoint(
             endpoint_number=CMSIS_DAPV2_IN_ENDPOINT_NUMBER,
             max_packet_size=CMSIS_DAPV2_ENDPOINT_SIZE
         )
-        usb.add_endpoint(cmsisdapIn)
+        usb.add_endpoint(cmsisdapV2In)
 
-        cmsisdapOut = USBStreamOutEndpoint(
+        cmsisdapV2Out = USBStreamOutEndpoint(
             endpoint_number=CMSIS_DAPV2_OUT_ENDPOINT_NUMBER,
             max_packet_size=CMSIS_DAPV2_ENDPOINT_SIZE
         )
-        usb.add_endpoint(cmsisdapOut)
+        usb.add_endpoint(cmsisdapV2Out)
 
         # Add DEBUG endpoint
         # ==================
-
         debug_ep = USBMultibyteStreamInEndpoint(
             endpoint_number=DEBUG_ENDPOINT_NUMBER,
             max_packet_size=DEBUG_ENDPOINT_SIZE,
@@ -195,7 +242,6 @@ class OrbtraceDevice(Elaboratable):
 
         # Add TRACE endpoint
         # ==================
-
         trace_ep = USBMultibyteStreamInEndpoint(
             endpoint_number=TRACE_ENDPOINT_NUMBER,
             max_packet_size=TRACE_ENDPOINT_SIZE,
@@ -203,14 +249,28 @@ class OrbtraceDevice(Elaboratable):
         )
         usb.add_endpoint(trace_ep)
 
-
         # Create a tracing instance
         tracepins=platform.request("tracein",0,xdr={"dat":2})
         m.submodules.trace = trace = TRACE_TO_USB(tracepins, trace_ep, self.leds_out)
 
+        # Merge the cmsis-dap streams into one
+        m.submodules.cmsisdapIn_mux = cmisdapIn_muxstream = StreamMux(cmsisdapV1In.stream,cmsisdapV2In.stream,domain="usb" )
+        m.submodules.cmsisdapOut_mux = cmisdapOut_muxstream = StreamMux(cmsisdapV1Out.stream,cmsisdapV2Out.stream,domain="usb", direction="out" )
+        m.d.comb += [
+            cmisdapIn_muxstream.selB.eq(self.isV2),
+            cmisdapOut_muxstream.selB.eq(self.isV2)
+            ]
+
+        # Switch between v2 and v1 interfaces ... hopefully this only happens at the start of a conversation
+        with m.If(cmsisdapV1Out.stream.valid):
+            m.d.usb += self.isV2.eq(0)
+        with m.If(cmsisdapV2Out.stream.valid):
+            m.d.usb += self.isV2.eq(1)
+
         dbgpins = platform.request("dbgif",0)
-        # Create a CMSIS DAP instance
-        m.submodules.cmsisdap = cmsisdap = CMSIS_DAP( cmsisdapIn.stream, cmsisdapOut.stream, dbgpins )
+
+        # Create the CMSIS DAP instance
+        m.submodules.cmsisdap = cmsisdap = CMSIS_DAP( cmisdapIn_muxstream.sout, cmisdapOut_muxstream.sout, dbgpins, self.isV2 )
 
         # Connect our device as a high speed device by default.
         m.d.comb += [

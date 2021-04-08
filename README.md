@@ -5,7 +5,7 @@ This is the repository for the ORBTrace debug tool, targetting ARM CORTEX JTAG &
 
 This is built using Claire Wolfs' icestorm toolchain and currently targets a either a lattice iCE40HX-8K board or an Lambda Concept ECPIX-5 board (by default a -85F, but that's a trivial change in the makefile).
 
-Trace is now complete and CMSIS-DAP for SWD is integrated. It has been minimally tested with pyOCD (the descriptors aren't correct, so a bit of cludging is needed to get pyOCD to recognise it, that will be fixed shortly).  Work is now progressing on qualifying JTAG and SWD to provide a complete debug probe. In theory, on an ECP5  or ICE40 HX8 part, it will work with any trace port operating up to at least 106MHz. Some stroking of the logic may make it a bit faster but there's no point doing that until everything else is done.  UP5K will run there up to around 50MHz, but if you're going out to buy something to use for running this code, that shouldn't be your first choice (ECPIX-5 should be, at least for now).
+Trace is now complete and CMSIS-DAP for SWD is integrated. CMSIS-DAP has been minimally tested with pyOCD using SWD and is fully functional using both a v1 and v2 interface, although further testing is needed.  Work is now progressing on qualifying JTAG and SWD to provide a complete debug probe. In theory, on an ECP5  or ICE40 HX8 part, it will work with any trace port operating up to at least 106MHz. Some stroking of the logic may make it a bit faster but there's no point doing that until everything else is done.  UP5K will run there up to around 50MHz, but if you're going out to buy something to use for running this code, that shouldn't be your first choice (ECPIX-5 should be, at least for now).
 
 This should all be viewed as experimental. There remains work to be done....but see at the foot of this note. There are now two distinct families of builds; Verilog builds that build the whole stack and rely on the ftdi UART for communicaton, and nmigen builds that use an external ULPI for USB2-HS comms. You really want the nmigen USB2-HS version if you'e got a choice.
 
@@ -14,7 +14,7 @@ Note that ICE40HX1 support has been removed as it was just too snug to fit in th
 Outstanding development actions;
 
  * Parse TPIU packets to split out ETM data and buffer it on-chip (will allow for post-mortem dumps)
- 
+
 Current testing status;
 
  * Tested on ICE40HX8K and ECPIX-5 at 1, 2 & 4 bit depths
@@ -145,7 +145,7 @@ LEDs
  - ICE40:D5, ECPIX-5:LD7-Blue: FallingEdge. (Diagnostic). Used to indicate that the link is synced to the falling edge rather than the rising one. Completely unimportant to end users, but very important to me...I will ask you for the state of this LED if you need support!
  - ICE40:D8, ECPIX-5:LD6-Green: Tx. Flashes while data is being sent over the serial link, `t` in the monitor.
  - ICE40:D9, ECPIX-5:LD8-Blue: Data. A 'sticky' version of D8 which will stay illuminated for about 0.7Secs after any data, `d` in the monitor.
- 
+
 
 ULPI Builds
 ===========
@@ -159,6 +159,11 @@ python3 orbtrace_builder.py
 
 ...the image will be built and installed onto a connected ECPIX-5. By default it will burn the image to RAM. You will need to edit the build scripts to burn to flash (not advisable for now).
 
-`orbuculum` will detect the Orbtrace board automatically, so no command line options are mandatory to use it.
+Note that there are a couple of hiccups in the build tools we are using, which nessesitate custom versions until these issues are addressed. To perform the build, please grab;
+
+* https://github.com/mubes/luna/tree/chunking
+* https://github.com/mubes/python-usb-protocol/tree/hid_descriptor
+
+In use `orbuculum` will detect the Orbtrace board automatically, so no command line options are mandatory to use it. pyOCD will also detect the cmsis-dap port automatically.
 
 IT IS VERY EXPERIMENTAL. CATS ARE AT RISK.

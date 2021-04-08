@@ -2,7 +2,7 @@
 
 // swdIF
 // =====
-// 
+//
 // Working from ARM Debug Interface Architecture Specification ADIv5.0 to ADIv5.2
 // Modelled on structure from DAPLink implementation at https://github.com/ARMmbed/DAPLink
 // which in Apache 2.0 Licence.
@@ -11,7 +11,7 @@
 module swdIF (
 		input             rst,      // Reset synchronised to clock
                 input             clk,
-                
+
 	// Downwards interface to the SWD pins
                 input             swdi,     // DIO pin from target
                 output reg        swdo,     // DIO pin to target
@@ -21,7 +21,7 @@ module swdIF (
         // Configuration
                 input [1:0]       turnaround, // Clock ticks per turnaround
                 input             dataphase,  // Does a dataphase follow WAIT/FAULT?
-                input [7:0]       idleCycles, // How many idlecycles to apply after transfer                
+                input [7:0]       idleCycles, // How many idlecycles to apply after transfer
 
 	// Upwards interface to command controller
                 input [1:0]       addr32,   // Address bits 3:2 for message
@@ -34,8 +34,8 @@ module swdIF (
 
                 input             go,       // Trigger
                 output            idle      // Response
-		);		  
-   
+		);
+
    // Internals =======================================================================
    reg [3:0]                      swd_state;   // current state of machine
    reg [2:0]                      ack_in;      // ack coming in from target
@@ -45,8 +45,8 @@ module swdIF (
    reg                            swclk_trak;  // Clock state tracker
 
    wire risingedge = ((!swclk_trak) && (swclk));
-   wire fallingedge = ((swclk_trak) && (!swclk));   
-   
+   wire fallingedge = ((swclk_trak) && (!swclk));
+
 `ifdef STATETRACE
    reg [3:0]                      swd_state_change;
 `endif
@@ -58,11 +58,11 @@ module swdIF (
    parameter ST_TRN2         = 4;
    parameter ST_DWRITE       = 5;
    parameter ST_DREAD        = 6;
-   parameter ST_DREADPARITY  = 7;   
+   parameter ST_DREADPARITY  = 7;
    parameter ST_COOLING      = 8;
 
    assign idle = (swd_state==ST_IDLE);     // Definition for idleness
-             
+
    always @(posedge clk, posedge rst)
      begin
         // Default status bits
@@ -99,12 +99,12 @@ module swdIF (
 `endif
 
              swclk_trak <= swclk;
-             
+
              case (swd_state)
                ST_IDLE: // Idle waiting for something to happen ===============================
                  begin
                     swwr    <= 1'b1;             // While idle we're in output mode
-                    
+
                     // Things are about to kick off, put the leading 1 on the line
                     if ((go) && (fallingedge))
                       swdo <= 1'b1;
@@ -116,7 +116,7 @@ module swdIF (
                          bits <= { 1'b1, 1'b0, apndp^rnw^addr32[1]^addr32[0], addr32[1], addr32[0], rnw, apndp };
                          bitcount  <= 6'h7;      // 8 bits, 1 being sent already now
                          swd_state <= ST_HDR_TX; // Send the packet header
-                         perr      <= 1'b0;      // Clear any previous error   
+                         perr      <= 1'b0;      // Clear any previous error
                          par       <= 1'b0;      // and clear accumulated parity
                       end
                  end // case: ST_IDLE
@@ -141,10 +141,10 @@ module swdIF (
                  begin
                     if (fallingedge)
                       bitcount <= bitcount - 1;
-               
+
                     if ((!bitcount) & risingedge)
                       begin
-                         swwr      <= 0;                         
+                         swwr      <= 0;
                          bitcount  <= 3;
                          swd_state <= ST_ACK;
                       end
@@ -183,7 +183,7 @@ module swdIF (
                            end // else: !if(ack_in==3'b001)
                       end // if ((fallingedge) && (!bitcount))
                  end // case: ST_ACK
-               
+
                ST_TRN2: // Turnaround for write time =====================================
                  begin
                     if (fallingedge)
@@ -198,7 +198,7 @@ module swdIF (
                            swd_state <= ST_DWRITE;
                         end
                  end // case: ST_TRN2
-               
+
                ST_DREAD: // Reading 32 bit value ======================================
                  begin
                     if (fallingedge)
@@ -233,7 +233,7 @@ module swdIF (
                            bitcount <= bitcount-1;
                         end
                  end
-               
+
                ST_DREADPARITY: // Reading parity ======================================
                  if (fallingedge)
                    begin
