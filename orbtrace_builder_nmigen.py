@@ -317,10 +317,10 @@ class OrbtraceDevice(Elaboratable):
 
 if __name__ == "__main__":
     platform = orbtrace_ECPIX5_85_Platform()
-    with open('src/traceIF.v') as f:
+    with open('verilog/traceIF.v') as f:
         platform.add_file("traceIF.v",f)
-    with open('src/swdIF.v') as f:
+    with open('verilog/swdIF.v') as f:
         platform.add_file("swdIF.v",f)
-    with open('src/dbgIF.v') as f:
+    with open('verilog/dbgIF.v') as f:
         platform.add_file("dbgIF.v",f)
     platform.build(OrbtraceDevice(), build_dir='build', do_program=True)

@@ -32,20 +32,20 @@ This section is applicable to the ICE40HX8K, ICEBREAKER and ECPIX_5 boards.  It 
 To build it perform;
 
 ```
-cd src
+cd verilog
 make ICE40HX8K_B_EVN
 
 ```
 or;
 
 ```
-cd src
+cd verilog
 make ECPIX_5_85F
 
 ```
 or;
 ```
-cd src
+cd verilog
 make ICEBREAKER
 ```
 
