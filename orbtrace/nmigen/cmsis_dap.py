@@ -1,5 +1,5 @@
 from nmigen                  import *
-from dbgIF                   import DBGIF
+from .dbgIF                   import DBGIF
 
 # Principle of operation
 # ======================

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 #
 
+import deps
+
 import os
 import itertools
 
@@ -17,10 +19,10 @@ from luna.usb2               import USBDevice, USBMultibyteStreamInEndpoint, USB
 from luna.gateware.stream.arbiter import StreamArbiter, StreamMultiplexer, StreamInterface
 from usb_protocol.types      import USBTransferType
 
-from orbtrace_platform_ecp5  import orbtrace_ECPIX5_85_Platform
-from traceIF                 import TRACE_TO_USB
+from orbtrace.nmigen.orbtrace_platform_ecp5  import orbtrace_ECPIX5_85_Platform
+from orbtrace.nmigen.traceIF                 import TRACE_TO_USB
 
-from cmsis_dap               import CMSIS_DAP
+from orbtrace.nmigen.cmsis_dap               import CMSIS_DAP
 
 # USB Endpoint configuration
 
@@ -315,10 +317,10 @@ class OrbtraceDevice(Elaboratable):
 
 if __name__ == "__main__":
     platform = orbtrace_ECPIX5_85_Platform()
-    with open('../src/traceIF.v') as f:
+    with open('src/traceIF.v') as f:
         platform.add_file("traceIF.v",f)
-    with open('../src/swdIF.v') as f:
+    with open('src/swdIF.v') as f:
         platform.add_file("swdIF.v",f)
-    with open('../src/dbgIF.v') as f:
+    with open('src/dbgIF.v') as f:
         platform.add_file("dbgIF.v",f)
     platform.build(OrbtraceDevice(), build_dir='build', do_program=True)

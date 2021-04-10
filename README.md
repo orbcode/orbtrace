@@ -153,16 +153,11 @@ ULPI Builds
 This is the preferred route since it offers much faster comms. At the moment it's only available on the ECPIX-5-85F board. To use it;
 
 ```
-cd orbtrace/nmigen
-python3 orbtrace_builder.py
+git submodule update --init
+./orbtrace_builder_nmigen.py
 ```
 
 ...the image will be built and installed onto a connected ECPIX-5. By default it will burn the image to RAM. You will need to edit the build scripts to burn to flash (not advisable for now).
-
-Note that there are a couple of hiccups in the build tools we are using, which nessesitate custom versions until these issues are addressed. To perform the build, please grab;
-
-* https://github.com/mubes/luna/tree/chunking
-* https://github.com/mubes/python-usb-protocol/tree/hid_descriptor
 
 In use `orbuculum` will detect the Orbtrace board automatically, so no command line options are mandatory to use it. pyOCD will also detect the cmsis-dap port automatically.
 
