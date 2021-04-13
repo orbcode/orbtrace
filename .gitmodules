@@ -6,7 +6,7 @@
 	url = https://github.com/nmigen/nmigen-boards.git
 [submodule "deps/python-usb-protocol"]
 	path = deps/python-usb-protocol
-	url = https://github.com/mubes/python-usb-protocol.git
+	url = https://github.com/usb-tools/python-usb-protocol.git
 [submodule "deps/luna"]
 	path = deps/luna
-	url = https://github.com/mubes/luna.git
+	url = https://github.com/greatscottgadgets/luna.git
