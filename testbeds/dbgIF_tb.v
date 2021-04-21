@@ -1,5 +1,5 @@
 // DBG Interface
-// From CoreSight TPIU-Lite Technical Reference Manual Revision: r0p0 
+// From CoreSight TPIU-Lite Technical Reference Manual Revision: r0p0
 
 `timescale 1ns/100ps
 
@@ -10,10 +10,10 @@
 // Make -DSTATETRACE=1 for detail tracing inside swdIF.v.
 
 module dbgIF_tb;
-   
+
    // Testbed interface
    wire        tms_swdio_tb;
-   
+
    reg         rst_tb;
    reg         clk_tb;
 
@@ -27,12 +27,12 @@ module dbgIF_tb;
    reg         tdo_swo_tb;
    reg [15:0]  pinsin_tb;
    wire [7:0]  pinsout_tb;
-   
+
    wire        swwr_tb;
    wire        nvsen_pin_tb;
    wire        nvdrive_pin_tb;
-   
-   
+
+
 
    // Controls
    reg [3:0]   turnaround_tb;
@@ -50,17 +50,17 @@ module dbgIF_tb;
 
    // Actuation & Responses
    reg [3:0]   command_tb;
-   
+
    reg         go_tb;
    wire        done_tb;
    wire        perr_tb;
 
    reg [44:0]  rx;
-   
+
    assign tms_swdio_tb = (swwr_tb==1)?tms_swdo_tb:swdi_tb;
    assign swdi_tb = rx[0];
-   
-   
+
+
    dbgIF #(.TICKS_PER_USEC(500)) DUT (
 	      .rst(rst_tb),        // Reset synchronised to clock
               .clk(clk_tb),
@@ -68,7 +68,7 @@ module dbgIF_tb;
         // Gross control - power etc.
               .vsen(vsen_tb),
               .vdrive(vdrive_tb),
-              
+
 	// Downwards interface to the DBG pins
               .swdi(tms_swdio_tb),         // DIO pin from target
               .tms_swdo(tms_swdo_tb),      // DIO pin to target
@@ -81,7 +81,7 @@ module dbgIF_tb;
               .tgt_reset_pin(tgt_reset_tb),
               .nvsen_pin(nvsen_pin_tb),
               .nvdrive_pin(nvdrive_pin_tb),
-              
+
 	// Upwards interface to command controller
               .addr32(addr32_tb),  // Address bits 3:2 for message
               .rnw(rnw_tb),        // Set for read, clear for write
@@ -91,12 +91,12 @@ module dbgIF_tb;
               .dread(dread_tb),    // Data/Result in
               .pinsin(pinsin_tb),  // Pin setting information
               .pinsout(pinsout_tb),// Current state of pins
-                                      
+
               .command(command_tb),// Command out
               .go(go_tb),          // Trigger
               .done(done_tb),      // Response
               .perr(perr_tb)       // Error status
-	      );		  
+	      );
 
    integer c=0;
    integer pc=0;
@@ -110,7 +110,7 @@ module dbgIF_tb;
 `define report\
    $display("Complete, err=%d",perr_tb);\
    if (perr_tb) $finish;
-   
+
    always
      begin
 	while (1)
@@ -127,13 +127,13 @@ module dbgIF_tb;
    always @(posedge tck_swclk_tb)
         $write("%d",tms_swdio_tb);
    realtime t;
-   
+
    initial begin
       $timeformat( -6, 1," uS", 5);
 
 
       go_tb=0;
-      
+
       rst_tb=0;
       clk_tb=0;
       #10;
@@ -144,6 +144,16 @@ module dbgIF_tb;
 
       clkDiv_tb=11'd2;
       #2;
+
+      // =========================================== Calculate clock
+      $display("\nCalculate clock;");
+      command_tb=DUT.CMD_SET_CLK;
+      dwrite_tb<=32'd1000000;
+
+
+      `go;
+      `report;
+      $finish;
 
       // =========================================== Perform a reset
       $display("\nPerforming Reset;");
@@ -168,7 +178,7 @@ module dbgIF_tb;
 
       // =========================================== Wait for a while
       $display("\nProgrammed wait;");
-      
+
       command_tb=DUT.CMD_WAIT;
       dwrite_tb=1234;
       t=$realtime;
@@ -198,7 +208,7 @@ module dbgIF_tb;
       $display("\nPins Setting checks;");
 
       pc=0;
-      
+
       dwrite_tb<=32'd100;
       command_tb=DUT.CMD_PINS_WRITE;
 
@@ -206,12 +216,12 @@ module dbgIF_tb;
       pinsin_tb={7'b0,1'b1,7'b0,1'b1};
       `go;
       pc|=(tck_swclk_tb!=1);
-      
+
       if (tck_swclk_tb!=1)
         $display("ERROR, SWCLK not at 1");
       pinsin_tb={7'b0,1'b1,7'b0,1'b0};
       `go;
-      pc|=(tck_swclk_tb!=0);      
+      pc|=(tck_swclk_tb!=0);
       if (tck_swclk_tb!=0)
         $display("ERROR, SWCLK not at 0");
 
@@ -219,12 +229,12 @@ module dbgIF_tb;
       pinsin_tb={6'b0,1'b1,1'b0,  6'b0,1'b1,1'b0};
       `go;
       pc|=(tms_swdo_tb!=1);
-      
+
       if (tms_swdo_tb!=1)
         $display("ERROR, TMS_SWDO not at 1");
       pinsin_tb={6'b0,1'b1,1'b0,  6'b0,1'b0,1'b0};
       `go;
-      pc|=(tms_swdo_tb!=0);      
+      pc|=(tms_swdo_tb!=0);
       if (tms_swdo_tb!=0)
         $display("ERROR, TMS_SWDO not at 0");
 
@@ -232,12 +242,12 @@ module dbgIF_tb;
       pinsin_tb={5'b0,1'b1,2'b0,  5'b0,1'b1,2'b0};
       `go;
       pc|=(tdi_tb!=1);
-      
+
       if (tdi_tb!=1)
         $display("ERROR, TDI not at 1");
-      pinsin_tb={5'b0,1'b1,2'b0,  5'b0,1'b0,2'b0};      
+      pinsin_tb={5'b0,1'b1,2'b0,  5'b0,1'b0,2'b0};
       `go;
-      pc|=(tdi_tb!=0);      
+      pc|=(tdi_tb!=0);
       if (tdi_tb!=0)
         $display("ERROR, TDI not at 0");
 
@@ -245,15 +255,15 @@ module dbgIF_tb;
       pinsin_tb={1'b1, 7'b0,  1'b1,7'b0};
       `go;
       pc|=(tgt_reset_tb!=1);
-      
+
       if (tgt_reset_tb!=1)
         $display("ERROR, TGT_RESET not at 1");
-      pinsin_tb={1'b1, 7'b0,  1'b0,7'b0};      
+      pinsin_tb={1'b1, 7'b0,  1'b0,7'b0};
       `go;
-      pc|=(tgt_reset_tb!=0);      
+      pc|=(tgt_reset_tb!=0);
       if (tgt_reset_tb!=0)
         $display("ERROR, TGT_RESET not at 0");
-      
+
       if (!pc)
         $display("CORRECT, pinsetting passed");
       else
@@ -267,7 +277,7 @@ module dbgIF_tb;
       command_tb=DUT.CMD_SET_SWD;
       `go;
       `report;
-      
+
       // =========================================== Simple read
       $display("\nSimple read;");
       rx = { 1'b1, 32'habcdef12, 3'b001, 1'bx, 8'bx };
@@ -277,7 +287,7 @@ module dbgIF_tb;
       command_tb<=DUT.CMD_TRANSACT;
       `go;
       `report;
-      
+
       if (perr_tb)
         $display("\nReturned Parity Error");
       else
@@ -290,7 +300,7 @@ module dbgIF_tb;
         end
 
       #10;
-      
+
       // ======================================== Parity error read
       $display("\n\nParity error read;");
       rx = { 1'b0, 32'habcdef12, 3'b001, 1'bx, 8'bx };
@@ -320,7 +330,7 @@ module dbgIF_tb;
            $write("\nFAULT ");
            $display("Returned [ACK %3b %08x]",ack_tb,dread_tb);
         end
-      
+
       // =========================================== Simple write
       $display("\n\nSimple write;");
       rx = { 1'b1, 32'hx, 3'b001, 1'bx, 8'bx };
@@ -341,9 +351,9 @@ module dbgIF_tb;
         end
 
       #50;
-      
+
       $finish;
-      
+
    end
    initial begin
       $dumpfile("dbgIF.vcd");

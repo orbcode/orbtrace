@@ -8,7 +8,6 @@ from nmigen.lib.fifo         import SyncFIFOBuffered
 class DBGIF(Elaboratable):
     def __init__(self, dbgpins):
         self.dbgpins      = dbgpins;
-        self.divisor      = Signal(11,reset=32);
         self.countdown    = Signal(23);
         self.turnaround   = Signal(4, reset=1);
         self.addr32       = Signal(2);
@@ -19,7 +18,6 @@ class DBGIF(Elaboratable):
         self.perr         = Signal();
         self.go           = Signal();
         self.postedMode   = Signal();
-        self.pins_write   = Signal();
         self.done         = Signal();
         self.again        = Signal();
         self.ignoreData   = Signal();
@@ -27,9 +25,10 @@ class DBGIF(Elaboratable):
         self.pinsin       = Signal(16);
         self.pinsout      = Signal(8);
         self.command      = Signal(4);
-        
+        self.c            = Signal();
+
     def elaborate(self, platform):
-        
+
         m = Module()
         swin = Signal();
         swout = Signal();
@@ -37,7 +36,8 @@ class DBGIF(Elaboratable):
         m.submodules.dbgif = Instance(
             "dbgIF",
 	    i_rst = ResetSignal("sync"),
-            i_clk = ClockSignal("sync"),
+            #i_clk = ClockSignal("sync"),
+            i_clk = ClockSignal("sys2"),
 
             # Gross control - power etc
             i_vsen      = 1,
@@ -51,14 +51,14 @@ class DBGIF(Elaboratable):
             o_tdi             = self.dbgpins.tdi,
             i_tdo_swo         = self.dbgpins.tdo_swo,
             i_tgt_reset_state = self.dbgpins.nreset_sense,
-            
+
             o_tgt_reset_pin   = self.dbgpins.reseten,
             o_nvsen_pin       = self.dbgpins.nvsen,
             o_nvdrive_pin     = self.dbgpins.nvdriveen,
 
             # Upwards interface to command controller
-	    i_addr32     = self.addr32, 
-            i_rnw        = self.rnw, 
+	    i_addr32     = self.addr32,
+            i_rnw        = self.rnw,
             i_apndp      = self.apndp,
             o_again      = self.again,
             o_ignoreData = self.ignoreData,
@@ -68,7 +68,7 @@ class DBGIF(Elaboratable):
             o_dread      = self.dread,
             i_pinsin     = self.pinsin,
             o_pinsout    = self.pinsout,
-
+            o_c = self.c,
             i_command = self.command,
             i_go      = self.go,
             o_done    = self.done,

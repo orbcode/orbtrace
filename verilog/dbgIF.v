@@ -2,7 +2,7 @@
 
 // dbgIF
 // =====
-// 
+//
 // Working from ARM Debug Interface Architecture Specification ADIv5.0 to ADIv5.2
 //
 // Debug interface covering JTAG, SWJ and SWD use cases.
@@ -25,7 +25,7 @@
 //                    by pinsin[15:8], wait and then return pins in pinsout[7:0].
 //                    dwrite is the time in uS to wait. If dwrite is zero then the period to
 //                    wait is one target interface clock half-cycle.
-//                          Bit Writable    Name              Notes                          
+//                          Bit Writable    Name              Notes
 //                           0      Y     SWCLK/TCK
 //                           1      Y     SWDIO/TMS
 //                           2      Y     TDI
@@ -63,12 +63,14 @@
 //
 //  CMD_SET_RST_TMR : Set reset and reset guard time in uS
 //
-// CMD_SET_TFR_CFG
+//  CMD_SET_TFR_CFG : Return pin configuration to selected option (used after taking over the
+//                    interface pins with CMD_SET_SWJ etc.)
+//
 
-module dbgIF #(parameter CLK_FREQ=125000000, parameter DEFAULT_SWCLK=1000000, parameter DEFAULT_RST_TIMEOUT_USEC=300) (
+module dbgIF #(parameter CLK_FREQ=120000000, parameter DEFAULT_SWCLK=1000000, parameter DEFAULT_RST_TIMEOUT_USEC=300) (
 		input             rst,
                 input             clk,
-                
+
         // Gross control, power etc.
                 input             vsen,            // When 1, provide power to VS (pins 11 & 13 on 20 pin header)
                 input             vdrive,          // When 1, provide power to Vdrive (pin 1 on 10 & 20 pin header)
@@ -80,7 +82,7 @@ module dbgIF #(parameter CLK_FREQ=125000000, parameter DEFAULT_SWCLK=1000000, pa
                 output            tck_swclk,       // Clock pin to target
                 output            tdi,             // TDI pin to target
                 input             tdo_swo,         // TDO/SWO pin from target
-                input             tgt_reset_state, // Current state of tgt_reset 
+                input             tgt_reset_state, // Current state of tgt_reset
                 output            tgt_reset_pin,   // Output pin to pull target reset low
                 output            nvsen_pin,       // Output pin to control vsen
                 output            nvdrive_pin,     // Output pin to control vdrive
@@ -94,23 +96,23 @@ module dbgIF #(parameter CLK_FREQ=125000000, parameter DEFAULT_SWCLK=1000000, pa
                 input  [31:0]     dwrite,          // Most recent data or parameter to write
                 output [31:0]     dread,           // Data read from target
                 input  [15:0]     pinsin,          // Pin setting information to target (upper 8 bits mask)
-                output [7:0]      pinsout,         // Pin information from target 
-               
+                output [7:0]      pinsout,         // Pin information from target
+
         // Event triggers and responses
-                input [3:0]       command,         // Command to be performed 
+                input [3:0]       command,         // Command to be performed
                 input             go,              // Trigger
                 output            done,            // Response
                 output reg        perr,            // Indicator of a error in the transfer
-
+output c,
         // Posted read management
                 output reg        postedMode,      // Flag indicating we're in posted mode
                 output reg        ignoreData,      // Ignore the data returned from this call (for the case of the start of posted read)
-                output reg        again,           // Take the data returned from this call as last AP read, then repeat the request
+                output reg        again            // Take the data returned from this call as last AP read, then repeat the request
 	      );
 
    parameter TICKS_PER_USEC=CLK_FREQ/1000000;
    parameter DEFAULT_IF_TICKS_PER_CLK=((CLK_FREQ+(DEFAULT_SWCLK>>1))/(DEFAULT_SWCLK<<1))-1;
-   
+
    // Control commands
    parameter CMD_RESET       = 0;
    parameter CMD_PINS_WRITE  = 1;
@@ -135,17 +137,17 @@ module dbgIF #(parameter CLK_FREQ=125000000, parameter DEFAULT_SWCLK=1000000, pa
    // Slowest clock we will accept
    parameter CDIV_LOG2    = 11;
    parameter MIN_CLOCK    = CLK_FREQ/(2**CDIV_LOG2);
-   parameter MAX_CLOCK    = CLK_FREQ;
-   
+   parameter MAX_CLOCK    = (CLK_FREQ/2);
+
    // Internals =======================================================================
    reg [CDIV_LOG2:0]              cdivcount;       // divisor for external clock
    reg [10:0]                     usecsdiv;        // Divider for usec
-   reg [31:0]                     scratchpad;      // Shift register for changing mode
+   reg [31:0]                     modeshift;       // Shift register for changing mode
+   reg [31:0]                     divreg;          // Division register
    reg [22:0]                     usecsdown;       // usec downcounter
-   
    reg [1:0]                      cdc_go;          // Clock domain crossed go
    reg                            if_go;           // Go to inferior
-      
+
    // Pins driven by swd (MODE_SWD)
    wire                           swd_swdo;
    wire                           swd_swclk;
@@ -175,14 +177,26 @@ module dbgIF #(parameter CLK_FREQ=125000000, parameter DEFAULT_SWCLK=1000000, pa
    assign dread     = (active_mode==MODE_SWD)?swd_dread :32'hdeadcafe;
 
    assign done = (dbg_state==ST_DBG_IDLE);
+   wire                          anedge = (cdivcount==0);
+   wire                          fallingedge = (anedge && ((normal_swclk) || (dbg_state==ST_DBG_IDLE)));
+   wire                          risingedge = (anedge && (~normal_swclk));
+
+
+   // Active low reset on target
+   assign tgt_reset_pin = ~((active_mode==MODE_SWJ)?pinw_nreset:(dbg_state!=ST_DBG_RESETTING));
+
+   // Always reflect current state of pins
+   assign pinsout={ tgt_reset_pin, tgt_reset_state, 1'b1, swwr, tdo_swo, tdi, swdi, tck_swclk };
+
 
    swdIF swd_instance (
 	      .rst(rst),
               .clk(clk),
-                       
+
               .swdi(swdi),
               .swdo(swd_swdo),
-              .swclk(next_swclk),
+              .falling(fallingedge),
+              .rising(risingedge),
               .swwr(swd_swwr),
               .turnaround(turnaround),
               .dataphase(dataphase),
@@ -193,12 +207,12 @@ module dbgIF #(parameter CLK_FREQ=125000000, parameter DEFAULT_SWCLK=1000000, pa
               .addr32(readRDBUFF?2'd3:addr32),
               .rnw(readRDBUFF?1'b1:rnw),
               .apndp(readRDBUFF?1'b0:apndp),
-                       
+
               .dwrite(dwrite[31:0]),
               .ack(swd_ack),
               .dread(swd_dread),
               .perr(swd_perr),
-
+.c(c),
               .go(if_go && (active_mode==MODE_SWD)),
               .idle(swd_idle)
 	      );
@@ -207,16 +221,15 @@ module dbgIF #(parameter CLK_FREQ=125000000, parameter DEFAULT_SWCLK=1000000, pa
    reg [1:0]                      turnaround;      // Number of cycles for turnaround when in SWD mode
    reg                            dataphase;       // Indicator of if a dataphase is needed on WAIT/FAULT
    reg [7:0]                      idleCycles;      // Number of cycles before return to idle
-   
+
    reg [22:0]                     rst_timeout;     // Default time for a reset
-   
+
    reg [1:0]                      active_mode;     // Mode that the interface is actually in
    reg [1:0]                      commanded_mode;  // Mode that the interface is requested to be in
    reg [3:0]                      dbg_state;       // Current state of debug handler
    reg [8:0]                      state_step;      // Stepping through comms states
-   reg                            next_swclk;      // swclk pre-calcuation
    reg                            readRDBUFF;      // Flag to read RDBUFF rather than commanded register
-   
+
    parameter ST_DBG_IDLE                 = 0;
    parameter ST_DBG_RESETTING            = 1;
    parameter ST_DBG_RESET_GUARD          = 2;
@@ -228,17 +241,7 @@ module dbgIF #(parameter CLK_FREQ=125000000, parameter DEFAULT_SWCLK=1000000, pa
    parameter ST_DBG_WAIT_CLKCHANGE       = 8;
    parameter ST_DBG_ESTABLISH_MODE       = 9;
    parameter ST_DBG_CALC_DIV             = 10;
-   
-   // Active low reset on target
-   assign tgt_reset_pin = ~((active_mode==MODE_SWJ)?pinw_nreset:(dbg_state!=ST_DBG_RESETTING));
 
-   // Always reflect current state of pins
-   assign pinsout={ tgt_reset_pin, tgt_reset_state, 1'b1, swwr, tdo_swo, tdi, swdi, tck_swclk };
-
-   // Edge flagging (These are the opposite of what you expect because of clock delay)
-   wire                           anedge=(!cdivcount);
-   wire                           fallingedge = (anedge && next_swclk);
-   
    always @(posedge clk, posedge rst)
 
      begin
@@ -247,7 +250,6 @@ module dbgIF #(parameter CLK_FREQ=125000000, parameter DEFAULT_SWCLK=1000000, pa
              cdc_go      <= 0;
              dataphase   <= 0;
              turnaround  <= 0;
-             next_swclk  <= 1;
              normal_swclk<= 1;
              pinw_swdo   <= 0;
              pinw_swwr   <= 1;
@@ -268,35 +270,31 @@ module dbgIF #(parameter CLK_FREQ=125000000, parameter DEFAULT_SWCLK=1000000, pa
              // CDC the go signal
              cdc_go <= {cdc_go[0],go};
 
-             // Run clock constantly if not idle, or if we are idle and it's not high yet
              if (cdivcount)
                cdivcount <= cdivcount-1;
              else
                begin
-                  next_swclk <= ~next_swclk;
+                  if ((dbg_state!=ST_DBG_IDLE) || (normal_swclk!=1))
+                    normal_swclk <= ~normal_swclk;
                   cdivcount  <= clkDiv;
                end // else: !if(cdivcount)
-             
-               
+
              // The usecs counter can run all of the time, it's independent
-             usecsdiv<=usecsdiv?usecsdiv-1:TICKS_PER_USEC-1;             
+             usecsdiv<=usecsdiv?usecsdiv-1:TICKS_PER_USEC-1;
              if (usecsdiv==0)
                begin
                   usecsdiv <= TICKS_PER_USEC-1;
                   usecsdown <= usecsdown - 1;
                end
 
-             if ((dbg_state!=ST_DBG_IDLE) || (normal_swclk!=1))
-               normal_swclk <= next_swclk;
-             
-             // We do everything on falling edges
              case(dbg_state)
                ST_DBG_IDLE: // Command request ========================================================
                  if (cdc_go==2'b11)
                    begin
-                      perr       <= 0;                      
+                      // Reset any outstanding error indication
+                      perr       <= 0;
                       case(command)
-                        CMD_PINS_WRITE: // Write pins specified in call -----------
+                        CMD_PINS_WRITE: // Write pins specified in call -------------------------------
                           begin
                              // This is a special case because it writes immediately
                              if (active_mode!=MODE_SWJ)
@@ -307,12 +305,12 @@ module dbgIF #(parameter CLK_FREQ=125000000, parameter DEFAULT_SWCLK=1000000, pa
                                   pinw_swwr   <= swwr;
                                   pinw_nreset <= tgt_reset_pin;
                                end
-                             
+
                              usecsdown   <= dwrite[31:0];
 
                              // All bets are off on posting, don't even try
                              postedMode  <= 0;
-                             
+
                              // Now update these bits if they're requested for updating
                              pinw_swclk  <= pinsin[8] ?pinsin[0]:1'b1;
                              pinw_swdo   <= pinsin[9] ?pinsin[1]:tms_swdo;
@@ -328,27 +326,33 @@ module dbgIF #(parameter CLK_FREQ=125000000, parameter DEFAULT_SWCLK=1000000, pa
                                   dbg_state  <= ST_DBG_WAIT_CLKCHANGE;
                                end
                           end // case: CMD_PINS_WRITE
-               
-                        CMD_RESET: // Reset target ---------------------------------
+
+                        CMD_RESET: // Reset target ----------------------------------------------------
                           if (fallingedge)
                             begin
                                postedMode <= 0;
                                usecsdown <= rst_timeout;
-                               usecsdiv <= TICKS_PER_USEC-1;                             
+                               usecsdiv  <= TICKS_PER_USEC-1;
                                dbg_state <= ST_DBG_RESETTING;
                             end
-                        
-                        CMD_TRANSACT: // Execute transaction on target interface ---
+
+                        CMD_TRANSACT: // Execute transaction on target interface ----------------------
                           if (fallingedge)
                             begin
                                // These signals are only active for the duration of a single transaction
-                               ignoreData <= 0;
-                               again      <= 0;
-                               readRDBUFF <= 0;
-                               
+                               // but if the previous return was a WAIT then they remain valid because
+                               // we are effectively still processing the transaction..we will repeat it
+                               if (swd_ack!=3'b010)
+                                 begin
+                                    ignoreData <= 0;
+                                    again      <= 0;
+                                    readRDBUFF <= 0;
+                                 end
+
                                if (postedMode && ~(rnw && apndp))
                                  begin
-                                    // We are leaving posted mode, read the last octet and indicate this one should be sent again
+                                    // We are leaving posted mode, read the last octet and indicate
+                                    // this one should be sent again
                                     postedMode <= 1'b0;
                                     again      <= (addr32!=3);
                                     readRDBUFF <= 1'b1;
@@ -360,13 +364,13 @@ module dbgIF #(parameter CLK_FREQ=125000000, parameter DEFAULT_SWCLK=1000000, pa
                                     postedMode <= 1'b1;
                                     ignoreData <= 1'b1;
                                  end
-                               
+
                                if_go       <= 1'b1;
                                active_mode <= commanded_mode;
                                dbg_state   <= ST_DBG_WAIT_INFERIOR_START;
                             end
-                        
-                        CMD_SET_SWD: // Set SWD mode -------------------------------
+
+                        CMD_SET_SWD: // Set SWD mode --------------------------------------------------
                           if (fallingedge)
                           begin
                              commanded_mode <= MODE_SWD;
@@ -375,13 +379,13 @@ module dbgIF #(parameter CLK_FREQ=125000000, parameter DEFAULT_SWCLK=1000000, pa
                              pinw_swwr      <= 1;
                              pinw_nreset    <= tgt_reset_pin;
                              state_step     <= 0;
-                             scratchpad     <= 32'h0000e79e;
-                             pinw_swclk     <= next_swclk;
+                             modeshift      <= 32'h0000e79e;
+                             pinw_swclk     <= normal_swclk;
                              postedMode     <= 0;
                              dbg_state      <= ST_DBG_ESTABLISH_MODE;
                           end
-                          
-                        CMD_SET_JTAG: // Set JTAG mode -----------------------------
+
+                        CMD_SET_JTAG: // Set JTAG mode ------------------------------------------------
                           if (fallingedge)
                           begin
                              commanded_mode <= MODE_JTAG;
@@ -390,107 +394,101 @@ module dbgIF #(parameter CLK_FREQ=125000000, parameter DEFAULT_SWCLK=1000000, pa
                              pinw_swwr      <= 1;
                              pinw_nreset    <= tgt_reset_pin;
                              state_step     <= 0;
-                             scratchpad     <= 32'h0000E73C;
-                             pinw_swclk     <= next_swclk;
+                             modeshift      <= 32'h0000E73C;
+                             pinw_swclk     <= normal_swclk;
                              postedMode     <= 0;
                              dbg_state      <= ST_DBG_ESTABLISH_MODE;
                           end
-                        
-                        CMD_SET_SWJ: // Set SWJ mode -------------------------------
+
+                        CMD_SET_SWJ: // Set SWJ mode --------------------------------------------------
                           begin
                              commanded_mode <= MODE_SWJ;
                              active_mode    <= MODE_SWJ;
                              pinw_swdo      <= tms_swdo;
                              pinw_swwr      <= swwr;
                              pinw_nreset    <= tgt_reset_pin;
-                             pinw_swclk     <= next_swclk;
+                             pinw_swclk     <= normal_swclk;
                              dbg_state      <= ST_DBG_WAIT_GOCLEAR;
                           end
 
-                        CMD_SET_PWRDOWN: // Set Power Down mode --------------------
+                        CMD_SET_PWRDOWN: // Set Power Down mode ---------------------------------------
                           begin
                              commanded_mode <= MODE_PWRDOWN;
                              active_mode    <= MODE_PWRDOWN;
                              pinw_swdo      <= tms_swdo;
                              pinw_swwr      <= 0;
                              pinw_nreset    <= tgt_reset_pin;
-                             pinw_swclk     <= next_swclk;                             
+                             pinw_swclk     <= normal_swclk;
                              dbg_state      <= ST_DBG_WAIT_GOCLEAR;
                           end
 
-                        CMD_SET_CLK: // Set clock -----------------------------------
+                        CMD_SET_CLK: // Set clock -----------------------------------------------------
                           begin
                              if ((dwrite<MIN_CLOCK) || (dwrite>MAX_CLOCK))
                                begin
-                                  perr <= 1'b1;
-                                  dbg_state <= ST_DBG_WAIT_GOCLEAR;
+                                  perr       <= 1'b1;
+                                  dbg_state  <= ST_DBG_WAIT_GOCLEAR;
                                end
                              else
                                begin
                                   clkDiv     <= 0;
-                                  // Make sure we tend to closest value rather than one below
-                                  // (We borrow the scratchpad register for the division)
-                                  scratchpad <= (CLK_FREQ>>1)+dwrite[31:2];
-                                  
+                                  divreg     <= MAX_CLOCK;
                                   dbg_state  <= ST_DBG_CALC_DIV;
                                end
                           end
 
-                        CMD_SET_CFG: // Set SWD Config ----------------------
+                        CMD_SET_CFG: // Set SWD Config ------------------------------------------------
                           begin
                              turnaround   <= dwrite[1:0];
                              dataphase    <= dwrite[2];
                              dbg_state    <= ST_DBG_WAIT_GOCLEAR;
                           end
 
-                        CMD_SET_TFR_CFG: // Set idle cycles ------------------------
+                        CMD_SET_TFR_CFG: // Set idle cycles -------------------------------------------
                           begin
                              idleCycles   <= dwrite[7:0];
                              dbg_state    <= ST_DBG_WAIT_GOCLEAR;
                           end
-                        
-                        CMD_WAIT: // Wait for specified number of uS ---------------
+
+                        CMD_WAIT: // Wait for specified number of uS ----------------------------------
                           begin
                              usecsdown    <= dwrite;
                              usecsdiv     <= TICKS_PER_USEC-1;
                              dbg_state <= ST_DBG_WAIT_TIMEOUT;
                           end
 
-                        CMD_CLR_ERR: // Clear error status -------------------------
+                        CMD_CLR_ERR: // Clear error status --------------------------------------------
                           begin
                              perr      <= 0;
                              dbg_state <= ST_DBG_WAIT_GOCLEAR;
                           end
 
-                        CMD_SET_RST_TMR: // Set reset timer ------------------------
+                        CMD_SET_RST_TMR: // Set reset timer -------------------------------------------
                           begin
                              rst_timeout <= dwrite;
                              dbg_state   <= ST_DBG_WAIT_GOCLEAR;
                           end
-                        
-                        default: // Unknown, set an error --------------------------
+
+                        default: // Unknown, set an error ---------------------------------------------
                           begin
                              perr         <= 1;
                              dbg_state <= ST_DBG_WAIT_GOCLEAR;
                           end
                       endcase // case (command)
-                   end // if (cdc_go==2'b11)
+                      end // if (go)
 
                ST_DBG_WAIT_GOCLEAR: // Waiting for go indication to clear =================================
-                 begin
                  if (cdc_go!=2'b11)
                    dbg_state <= ST_DBG_IDLE;
-                 end
-               
+
                ST_DBG_CALC_DIV: // Calculate division for debug clock =====================================
-                 if (scratchpad>=dwrite)
+                 if (divreg>dwrite)
                    begin
-                      scratchpad <= scratchpad-dwrite;
+                      divreg     <= divreg-dwrite;
                       clkDiv     <= clkDiv+1;
                    end
                  else
                    begin
-                      clkDiv    <= clkDiv-1;
                       cdivcount <= clkDiv-1;
                       dbg_state <= ST_DBG_WAIT_GOCLEAR;
                    end
@@ -501,9 +499,15 @@ module dbgIF #(parameter CLK_FREQ=125000000, parameter DEFAULT_SWCLK=1000000, pa
                       MODE_SWD:
                         if (swd_idle)
                           begin
-                             // This delberately goes to IDLE and not GO_CLEAR for streaming purposes
                              dbg_state <= ST_DBG_WAIT_GOCLEAR;
                              perr      <= swd_perr;
+                             if (swd_perr | ((ack != 3'b001) & (ack !=3'b010)))
+                               begin
+                                  postedMode <= 0;
+                                  ignoreData <= 0;
+                                  again      <= 0;
+                                  readRDBUFF <= 0;
+                               end
                           end
                       default:
                         begin
@@ -530,7 +534,7 @@ module dbgIF #(parameter CLK_FREQ=125000000, parameter DEFAULT_SWCLK=1000000, pa
                         end
                     endcase // case (active_mode)
                  end
-               
+
                ST_DBG_WAIT_TIMEOUT: // Waiting for timeout to complete ====================================
                  if (!usecsdown)
                       dbg_state <= ST_DBG_WAIT_GOCLEAR;
@@ -538,7 +542,7 @@ module dbgIF #(parameter CLK_FREQ=125000000, parameter DEFAULT_SWCLK=1000000, pa
                ST_DBG_WAIT_CLKCHANGE: // Waiting for clock state to change ================================
                  if (anedge)
                    dbg_state <= ST_DBG_WAIT_GOCLEAR;
-               
+
                ST_DBG_RESETTING: // We are in reset =======================================================
                  if (!usecsdown)
                    begin
@@ -554,34 +558,31 @@ module dbgIF #(parameter CLK_FREQ=125000000, parameter DEFAULT_SWCLK=1000000, pa
 
                ST_DBG_ESTABLISH_MODE: // We want to set a specific mode ===================================
                  begin
-                    pinw_swclk<=next_swclk;
-                    if (anedge)
+                    pinw_swclk<=normal_swclk;
+
+                    // Stay in sync with clock that is given to inferiors
+                    if (fallingedge)
                       begin
-                         // Stay in sync with clock that is given to inferiors
-                         if (fallingedge)
-                           begin
-                              // Our changes happen on the falling edge (i.e. pinw_swclk currently high)
-                              if ((state_step<50) || (state_step>65)) pinw_swdo<=1'b1;
-                              else
-                                begin
-                                   pinw_swdo<=scratchpad[0];
-                                   scratchpad<={1'b0,scratchpad[15:1]};
-                                end
-                              if (state_step>115)
-                                pinw_swdo<=0;
-                              state_step<=state_step+1;
-                           end // if (falledge)
+                         // Our changes happen on the falling edge (i.e. pinw_swclk currently high)
+                         if ((state_step<50) || (state_step>65)) pinw_swdo<=1'b1;
                          else
-                           if (state_step==118)
-                             begin
-                                pinw_swdo  <= 0;
-                                pinw_swclk <= 1;
-                                dbg_state<=ST_DBG_WAIT_GOCLEAR;
-                             end
-                      end // if (pinw_swclk)
+                           begin
+                              pinw_swdo<=modeshift[0];
+                              modeshift<={1'b0,modeshift[15:1]};
+                           end
+                         if (state_step>115)
+                           pinw_swdo<=0;
+                         state_step<=state_step+1;
+                      end // if (falledge)
+                    else
+                      if (state_step==118)
+                        begin
+                           pinw_swdo  <= 0;
+                           pinw_swclk <= 1;
+                           dbg_state<=ST_DBG_WAIT_GOCLEAR;
+                        end
                  end // case: ST_DBG_ESTABLISH_MODE
              endcase // case (dbg_state)
-             
           end // else: !if(rst)
-     end // always @ (posedge clk, posedge rst)   
+     end // always @ (posedge clk, posedge rst)
 endmodule // dbgIF

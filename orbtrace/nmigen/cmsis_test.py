@@ -3,6 +3,9 @@ import cmsis_dap
 
 VENDOR_ID = 0x1209
 PRODUCT_ID = 0x3443
+INTERFACE = 1
+IN_EP = (2|0x80)
+OUT_EP = 2
 
 def write_to_usb(dev, msg_str):
 
@@ -11,8 +14,7 @@ def write_to_usb(dev, msg_str):
         print(f' 0x{p:02x}', end="")
 
     try:
-	# 0x01 is the OUT endpoint
-        num_bytes_written = dev.write(0x02, msg_str)
+        num_bytes_written = dev.write(OUT_EP, msg_str)
 
     except usb.core.USBError as e:
         print (e.args)
@@ -23,7 +25,7 @@ def write_to_usb(dev, msg_str):
 def read_from_usb(dev, rxlen, timeout):
     try:
 	# try to read a maximum of 2^16-1 bytes from 0x81 (IN endpoint)
-        data = dev.read(0x81, 6000, timeout)
+        data = dev.read(IN_EP, 6000, timeout)
     except usb.core.USBError as e:
         print ("Error reading response: {}".format(e.args))
         exit(-1)
@@ -56,7 +58,7 @@ tests2 = (
     ( "Serial Number",              b"\x00\x03",                    b"\x00\x00"                 ),
     ( "Target Device Vendor",       b"\x00\x05",                    b"\x00\x00"                 ),
     ( "Target Device Name",         b"\x00\x06",                    b"\x00\x00"                 ),
-    ( "FW version",                 b"\x00\x04",                    b"\x00\x04\x31\x2e\x30\x30" ),
+    ( "FW version",                 b"\x00\x04",                    b"\x00\x05\x31\x2e\x30\x30\x00" ),
     ( "Illegal command",            b"\x42",                        b"\xff"                     ),
     ( "Request CAPABILITIES",       b"\x00\xf0",                    b"\x00\x01\x01"             ),
     ( "Request TEST DOMAIN TIMER",  b"\x00\xf1",                    b"\x00\x08\x00\xca\x9a\x3b" ),
@@ -72,20 +74,20 @@ tests2 = (
     ( "Disconnect",                 b"\x03",                        b"\x03\x00"                 ),
     ( "WriteABORT",                 b"\x08\x00\x01\x02\x03\x04",    b"\x08\x00"                 ),
     ( "Delay",                      b"\x09\x01\x02\x03\x04",        b"\x09\x00"                 ),
-    ( "ResetTarget",                b"\x0A" ,                       b"\x0A\x00\x00"             ),
+    ( "ResetTarget",                b"\x0A" ,                       b"\x0A\x00\x01"             ),
     ( "DAP_SWJ_Pins",               b"\x10\x17\x17\x00\01\x02\x03", b"\x10\x99"                 ),
     ( "DAP_SWJ_Clock",              b"\x11\x00\x01\x02\x03",        b"\x11\x00"                 ),
     ( "DAP_SWJ_Sequence",           b"\x12\x03\x01",    b"\x12\x00"                 ),
-    ( "DAP_SWJ_Sequence (Long)",    b"\x12\x00\x01\x02\x03\x04\x01\x02\x03\x04\x01\x02\x03\x04\x01\x02\x03\x04\x01\x02\x03\x04\x01\x02\x03\x04\x01\x02\x03\x04\x01\x02\x03\x04",    b"\x12\x00"                 ),    
+    ( "DAP_SWJ_Sequence (Long)",    b"\x12\x00\x01\x02\x03\x04\x01\x02\x03\x04\x01\x02\x03\x04\x01\x02\x03\x04\x01\x02\x03\x04\x01\x02\x03\x04\x01\x02\x03\x04\x01\x02\x03\x04",    b"\x12\x00"                 ),
     ( "DAP_SWO_Transport (None)",   b"\x17\x00",                    b"\x17\x00"                 ),
     ( "DAP_SWO_Transport (Cmd)",    b"\x17\x01",                    b"\x17\x00"                 ),
-    ( "DAP_SWO_Transport (EP)",     b"\x17\x02",                    b"\x17\x00"                 ),    
+    ( "DAP_SWO_Transport (EP)",     b"\x17\x02",                    b"\x17\x00"                 ),
     ( "DAP_SWO_Transport (Bad)",    b"\x17\x03",                    b"\x17\xff"                 ),
     ( "DAP_SWO_Mode (Off)",         b"\x18\x00",                    b"\x18\x00"                 ),
     ( "DAP_SWO_Mode (Uart)",        b"\x18\x01",                    b"\x18\x00"                 ),
     ( "DAP_SWO_Mode (Manch)",       b"\x18\x02",                    b"\x18\x00"                 ),
     ( "DAP_SWO_Mode (Bad)",         b"\x18\x03",                    b"\x18\xff"                 ),
-    ( "DAP_SWO_Baudrate",           b"\x19\x01\x02\x03\x04",        b"\x19\x01\x02\x03\x04"     ),    
+    ( "DAP_SWO_Baudrate",           b"\x19\x01\x02\x03\x04",        b"\x19\x01\x02\x03\x04"     ),
     ( "DAP_SWO_Control (Start)",    b"\x1a\x01",                    b"\x1a\x00"                 ),
     ( "DAP_SWO_Control (Stop)",     b"\x1a\x00",                    b"\x1a\x00"                 ),
     ( "DAP_SWO_Control (Bad)",      b"\x1a\x02",                    b"\x1a\xff"                 ),
@@ -94,7 +96,7 @@ tests2 = (
     ( "DAP_SWO_ExtendedStatus (Bad)", b"\x1e\x08",                  b"\xff"                     ),
     ( "DAP_SWO_Data (Short)",       b"\x1c\x04\x00",                b"\x1c\x00\x04\x00\x2a\x2a\x2a\x2a" ),
     ( "DAP_SWO_Data (Long)",        b"\x1c\x63\x00",                b"\x1c\x00\x63\x00\x2a\x2a\x2a\x2a" ),
-    ( "DAP_SWO_Data (Too Long)",    b"\x1c\x65\x00",                b"\x1c\x00\x64\x00\x2a\x2a\x2a\x2a" ),    
+    ( "DAP_SWO_Data (Too Long)",    b"\x1c\x65\x00",                b"\x1c\x00\x64\x00\x2a\x2a\x2a\x2a" ),
 
     ( "DAP_JTAG_Sequence (Simple)", b"\x14\x01\x08\x01",            b"\x14\x00" ),
     ( "DAP_JTAG_Sequence (W/TDO-R)",b"\x14\x01\x88\x91",        b"\x14\x00\x80" ),
@@ -109,62 +111,68 @@ tests2 = (
     ( "DAP_TransferConfigure",      b"\x04\x03\x11\x22\x33\x44",    b"\x04\x00" ),
 #    ( "DAP_TransferConfigure (Bad)",b"\x04\x03\x11\x22\x33",        b"\xff" ),
     ( "DAP_Transfer (Simple)",      b"\x05\x00\x02\xff\x11\x22\x33\x44\x55\x66\x77\x88", b"\x05\x00\x02\x11\x22\x33\x44\x55\x66\x77\x88" ),
- #   ( "DAP_Transfer (3 words)",     b"\x05\x00\x03\xff\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc",
- #                                   b"\x05\x00\x02\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc" ),
-      
+
 )
 
 tests = (
-#    ( "FW version",                 b"\x00\x04",                    b"\x00\x04\x31\x2e\x30\x30" ),
+    ( "ResetTarget",                b"\x0A" ,                       b"\x0A\x00\x01"             ),
+    ( "Short Request",              b"\x19\x19",                    b"\xff"                     ),
+    ( "FW version",                  b"\x00\x04",                    b"\x00\x05\x31\x2e\x30\x30\x00" ),
     ( "Connect swd",                b"\x02\x01",                    b"\x02\x01"                 ),
     #( "Set clock to 100Hz",        b"\x11\x64\x00\x00\x00",         b"\x11\x01" ),
     #( "Set clock to 90MHz",        b"\x11\x80\x4A\x5D\x05",         b"\x11\x01" ),
     #( "Set clock to 10MHz",        b"\x11\x80\x96\x98\x00",         b"\x11\x00" ),
     #( "Set clock to 30MHz",        b"\x11\x80\xC3\xC9\x01",         b"\x11\x00" ),
-     ( "Set clock to 192305Hz",       b"\x11\x31\xef\x02\x00",         b"\x11\x00" ),
-    ( "DAP_TransferBlock (ReadDP0)",     b"\x06\x00\x01\x00\x02",            b"\x06\x01\x00\x01\x77\x14\xa0\x2b"     ),
-    ( "DAP_TransferBlock (ReadDP0)",     b"\x05\x00\x03\x04\x00\x0f\x00\x50\x08\xf0\x00\x00\x00\x0f", b"\x05\x03\x01\x41\x00\x77\x04"),
-    
-#    ( "DAP_Transfer (ReadDP0)",      b"\x05\x00\x04\x00\x1e\x00\x00\x00\x08\x00\x00\x00\x00\x04\x00\x0f\x00\x06", b"\x05\x04\x01\x00\x00\xf0"),
+#     ( "Set clock to 192305Hz",       b"\x11\x31\xef\x02\x00",         b"\x11\x00" ),
+     ( "DAP_Transfer (ReadDP0)",     b"\x05\x00\x04\x02\x02\x02\x02",            b"\x05\x04\x01\x77\x14\xa0\x2b\x77\x14\xa0\x2b\x77\x14\xa0\x2b\x77\x14\xa0\x2b"     ),
+     ( "DAP_Transfer (WriteDP4)",    b"\x05\x00\x01\x08\x00\x00\x00\xf0",            b"\x05\x01\x01"     ),
+
+     ("Read CST", b"\x05\x00\x12\x05\xbc\xff\x0f\xe0\x0f\x0f\x0f\x0f\x0f\x0f\x0f\x0f\x0f\x0f\x0f\x0f\x0f\x0f\x0f\x0f\x0f", b"\x05\x12\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x11\x00\x00\x00\x04\x00\x00\x00\x0a\x00\x00\x00\x00\x00\x00\x00\x0d\x00\x00\x00\x10\x00\x00\x00\x05\x00\x00\x00" ),
+
 #     ( "DAP_Transfer (ReadDP0)",     b"\x05\x00\x01\x02",            b"\x05\x01\x01\x77\x14\xa0\x2b"     ),
-#     ( "DAP_Transfer (WriteDP4)",    b"\x05\x00\x01\x08\x00\x00\x00\xf0",            b"\x05\x01\x01"     ),    
+
+     ( "DAP_TransferBlock (ReadDP0)",     b"\x06\x00\x01\x00\x02\x00",            b"\x06\x01\x00\x01\x77\x14\xa0\x2b"     ),
+#    ( "DAP_Transfer (3 words)",     b"\x05\x00\x03\xff\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc",
+#      b"\x05\x00\x02\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc" ),
+     #   ( "Loop",     b"\x05\x00\x03\x04\x00\x0f\x00\x50\x08\xf0\x00\x00\x00\x0f",b"\x05\x00\x03\x04\x00\x0f\x00\x50\x08\xf0\x00\x00\x00\x0f"),
+
+#     ( "DAP_Transfer (ReadDP0)",     b"\x05\x00\x01\x02",            b"\x05\x01\x01\x77\x14\xa0\x2b"     ),
 #    ( "DAP_Delay",                   b"\x09\x00\x01",                 b"\x09\x00" ),
 
 
 #    ( "DAP_SWJ_Sequence (8 bits)",     b"\x12\x10\xff\xaa",            b"\x12\x00"     ),
 #    ( "DAP_SWJ_Sequence (51 bits)",     b"\x12\x21\x01\x00\x00\x40\x01", b"\x12\x00"),
 
-###########################    
+###########################
 #    ( "DAP_SWJ_Sequence (Reset)",     b"\x12\x33\xff\xff\xff\xff\xff\xff\xff", b"\x12\x00"),
 #    ( "DAP_SWJ_Sequence (JTAG->SWD)",     b"\x12\x10\x9e\xe7", b"\x12\x00"),
-    
-#    ( "DAP_SWJ_Sequence (Reset)",     b"\x12\x33\xff\xff\xff\xff\xff\xff\xff", b"\x12\x00"),    
+
+#    ( "DAP_SWJ_Sequence (Reset)",     b"\x12\x33\xff\xff\xff\xff\xff\xff\xff", b"\x12\x00"),
 #    ( "DAP_SWJ_Sequence (JTAG->SWD)",     b"\x12\x08\x00", b"\x12\x00"),
-    
+
 #    ( "DAP_SWJ_Sequence (Reset)",     b"\x12\x33\xff\xff\xff\xff\xff\xff\xff", b"\x12\x00"),
 #    ( "DAP_SWJ_Sequence (JTAG->SWD)",     b"\x12\x10\x9e\xe7", b"\x12\x00"),
-    
+
 #    ( "DAP_SWJ_Sequence (Reset)",     b"\x12\x33\xff\xff\xff\xff\xff\xff\xff", b"\x12\x00"),
 #    ( "DAP_SWJ_Sequence (8 Zeros)",     b"\x12\x08\x00", b"\x12\x00"),
-    
+
 #    ( "DAP_SWJ_Sequence (Reset)",     b"\x12\x33\xff\xff\xff\xff\xff\xff\xff", b"\x12\x00"),
 
 #    ( "DAP_sWJ_Sequence (??)",        b"\x12\x27\x33\xba\xbb\xbb", b"\x12\x00"),
 #    ( "DAP_SWJ_Sequence (??2)",       b"\x12\x88\xff\x92\xf3\x09\x62\x95\x2d\x85\x86\xe9\xaf\xdd\xe3\xa2\x0e\xbc\x19", b"\x12\x00"),
-    
+
 #    ( "DAP_SWJ_Sequence (??3)",       b"\x12\x0c\x01\xa0", b"\x12\x00"),
 
 ##########################
-    
- #   ( "DAP_Transfer (ReadDP0)",     b"\x05\x00\x01\x02",            b"\x05\x01\x01\x77\x14\xa0\x2b"     ),        
-    
+
+
 #    ( "DAP_Transfer (ReadDP4)",     b"\x05\x00\x01\x0A",            b"\x05\x01\x01\x00\x00\x00\x04"     ),
-#    ( "DAP_Transfer (ReadDP4)",     b"\x05\x00\x01\x0A",            b"\x05\x01\x01\x00\x00\x00\xf4"     ),    
+#    ( "DAP_Transfer (ReadDP4)",     b"\x05\x00\x01\x0A",            b"\x05\x01\x01\x00\x00\x00\xf4"     ),
 #    ( "DAP_Transfer (ReadDP0)",     b"\x05\x00\x01\x02",            b"\x05\x00\x00\x00\x00\x00\x00\x00"     ),
-#    ( "DAP_Transfer (ReadDP0)",     b"\x05\x00\x01\x02",            b"\x05\x00\x00\x00\x00\x00\x00\x00"     ),    
+#    ( "DAP_Transfer (ReadDP0)",     b"\x05\x00\x01\x02",            b"\x05\x00\x00\x00\x00\x00\x00\x00"     ),
 #    ( "DAP_Abort",                   b"\x08\x00\x11\x22\x33\x44",    b"\x08\x00" ),
 #    ( "DAP_TransferBlock (ReadDP0)",     b"\x06\x00\x05\x00\x02",            b"\x06\x01\x00\x01\x77\x14\xa0\x2b"     ),
-#    ( "ResetTarget",                b"\x0A" ,                       b"\x0A\x00\x00"             ),    
+#    ( "ResetTarget",                b"\x0A" ,                       b"\x0A\x00\x01"             ),
     )
 
 
@@ -174,9 +182,10 @@ if device is None:
     raise ValueError('Device not found. Please ensure it is connected')
     sys.exit(1)
 
-# Claim interface 0 - this interface provides IN and OUT endpoints to write to and read from
-u=usb.util.claim_interface(device, 0)
+# Claim interface 1 - this interface provides cmsis-dap v2 IN and OUT endpoints to write to and read from
+u=usb.util.claim_interface(device, INTERFACE)
 print("Interface claimed")
+#read_from_usb(device,1000,10)
 
 for desc,inseq,outsq in tests:
     print("==============",desc)

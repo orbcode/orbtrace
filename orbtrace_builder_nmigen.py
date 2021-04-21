@@ -8,6 +8,7 @@ import itertools
 
 from nmigen                  import *
 from nmigen.build            import ResourceError
+from nmigen.lib.fifo         import AsyncFIFO,AsyncFIFOBuffered
 from nmigen.hdl              import ClockSignal
 
 from nmigen.build.dsl        import Pins
@@ -28,7 +29,7 @@ from orbtrace.nmigen.cmsis_dap               import CMSIS_DAP
 
 # Interface 0
 CMSIS_DAPV1_IF                    = 0
-CMSIS_DAPV1_NAME                  = "CMSIS-DAPv1"
+CMSIS_DAPV1_NAME                  = "CMSIS-DAP v1"
 CMSIS_DAPV1_IN_ENDPOINT_NUMBER    = 1
 CMSIS_DAPV1_IN_ENDPOINT_SIZE      = 64
 CMSIS_DAPV1_OUT_ENDPOINT_NUMBER   = 1
@@ -36,7 +37,7 @@ CMSIS_DAPV1_OUT_ENDPOINT_SIZE     = 64
 
 # Interface 1
 CMSIS_DAPV2_IF                    = 1
-CMSIS_DAPV2_NAME                  = "CMSIS-DAPv2"
+CMSIS_DAPV2_NAME                  = "CMSIS-DAP v2"
 CMSIS_DAPV2_IN_ENDPOINT_NUMBER    = 2
 CMSIS_DAPV2_OUT_ENDPOINT_NUMBER   = 2
 CMSIS_DAPV2_ENDPOINT_SIZE         = 512
@@ -61,32 +62,31 @@ TX_LED_STRETCH_BITS   = 16
 OVF_LED_STRETCH_BITS  = 26
 HB_BITS               = 27
 
-class StreamMux(Elaboratable):
-    def __init__(self, s1, s2, domain="sync", direction="in"):
-        self.s1 = s1
-        self.s2 = s2
-        self._domain = domain
-        self._dir = direction
-        self.selB = Signal()
-        self.sout = StreamInterface()
+class StreamCDC(Elaboratable):
+    def __init__(self, srcstream, fromdomain="usb", todomain="sync", fifodepth=3):
+        self.fifo_depth   = fifodepth
+        self.srcstream    = srcstream
+        self.stream       = StreamInterface()
+        self.fromdomain   = fromdomain
+        self.todomain     = todomain
 
     def elaborate(self, platform):
         m = Module()
+        m.submodules.fifo = fifo = AsyncFIFO( width=10, depth=self.fifo_depth, r_domain=self.fromdomain, w_domain=self.todomain )
 
-        if (self._dir=="in"):
-            with m.If(self.selB):
-                m.d.comb += self.sout.attach(self.s2)
-            with m.Else():
-                m.d.comb += self.sout.attach(self.s1)
-        else:
-            with m.If(self.selB):
-                m.d.comb += self.s2.attach(self.sout)
-            with m.Else():
-                m.d.comb += self.s1.attach(self.sout)
+        m.d.comb += [
+            fifo.w_en.eq( self.srcstream.valid ),
+            self.srcstream.ready.eq( fifo.w_rdy ),
+            fifo.w_data.eq( Cat(self.srcstream.payload, self.srcstream.first, self.srcstream.last) ),
 
-        m = DomainRenamer(self._domain)(m)
+            self.stream.valid.eq( fifo.r_rdy ),
+            fifo.r_en.eq( self.stream.ready ),
+            self.stream.payload.eq( fifo.r_data[0:7] ),
+            self.stream.first.eq( fifo.r_data[8] ),
+            self.stream.last.eq( fifo.r_data[9] )
+        ]
+
         return m
-
 
 class OrbtraceDevice(Elaboratable):
 
@@ -99,6 +99,8 @@ class OrbtraceDevice(Elaboratable):
             d.idProduct          = 0x3443  # Allocated from pid.codes
 
             d.iManufacturer      = "Orbcode"
+
+            # Eventually the 'CMSIS-DAP' part of this can be dropped, but it's needed at the moment for bmp
             d.iProduct           = "Orbtrace with CMSIS-DAP"
             d.iSerialNumber      = "Unserialed"
 
@@ -124,13 +126,13 @@ class OrbtraceDevice(Elaboratable):
                     e.bEndpointAddress = 0x80 | CMSIS_DAPV1_IN_ENDPOINT_NUMBER
                     e.wMaxPacketSize   = CMSIS_DAPV1_IN_ENDPOINT_SIZE
                     e.bmAttributes     = USBTransferType.INTERRUPT
-                    e.bInterval        = 2
+                    e.bInterval        = 1
 
                 with i.EndpointDescriptor() as e:
                     e.bEndpointAddress = CMSIS_DAPV1_OUT_ENDPOINT_NUMBER
                     e.wMaxPacketSize   = CMSIS_DAPV1_OUT_ENDPOINT_SIZE
                     e.bmAttributes     = USBTransferType.INTERRUPT
-                    e.bInterval        = 2
+                    e.bInterval        = 1
 
             with c.InterfaceDescriptor() as i:
                 i._collection = descriptors
@@ -183,6 +185,7 @@ class OrbtraceDevice(Elaboratable):
         self.leds_out = Signal(8)
 
         m = Module()
+        dbgpins = platform.request("dbgif",0)
 
         # State of things to be reported via the USB link
         m.d.comb += self.leds_out.eq(Cat( self.dat_ind, self.tx_ind, C(0,3), self.ovf_ind, self.inv_ind, self.hb_ind ))
@@ -255,24 +258,65 @@ class OrbtraceDevice(Elaboratable):
         tracepins=platform.request("tracein",0,xdr={"dat":2})
         m.submodules.trace = trace = TRACE_TO_USB(tracepins, trace_ep, self.leds_out)
 
-        # Merge the cmsis-dap streams into one
-        m.submodules.cmsisdapIn_mux = cmisdapIn_muxstream = StreamMux(cmsisdapV1In.stream,cmsisdapV2In.stream,domain="usb" )
-        m.submodules.cmsisdapOut_mux = cmisdapOut_muxstream = StreamMux(cmsisdapV1Out.stream,cmsisdapV2Out.stream,domain="usb", direction="out" )
-        m.d.comb += [
-            cmisdapIn_muxstream.selB.eq(self.isV2),
-            cmisdapOut_muxstream.selB.eq(self.isV2)
-            ]
-
         # Switch between v2 and v1 interfaces ... hopefully this only happens at the start of a conversation
         with m.If(cmsisdapV1Out.stream.valid):
             m.d.usb += self.isV2.eq(0)
         with m.If(cmsisdapV2Out.stream.valid):
             m.d.usb += self.isV2.eq(1)
 
-        dbgpins = platform.request("dbgif",0)
+        # Stream interfaces on each side of cdc
+        outstream     = StreamInterface()
+        instream      = StreamInterface()
+        outstream_cdc = StreamInterface()
+        instream_cdc  = StreamInterface()
 
-        # Create the CMSIS DAP instance
-        m.submodules.cmsisdap = cmsisdap = CMSIS_DAP( cmisdapIn_muxstream.sout, cmisdapOut_muxstream.sout, dbgpins, self.isV2 )
+        with m.If(self.isV2):
+            m.d.comb += [
+                cmsisdapV2Out.stream.attach(outstream),
+                instream.attach(cmsisdapV2In.stream)
+                ]
+        with m.Else():
+            m.d.comb += [
+                cmsisdapV1Out.stream.attach(outstream),
+                instream.attach(cmsisdapV1In.stream)
+                ]
+
+        # Map usb domain to/from sync domain
+        m.submodules.asnycfifo_out = outfifo = AsyncFIFO( width=10, depth=3, w_domain="usb", r_domain="sync" )
+        m.d.comb += [
+            outfifo.w_en.eq( outstream.valid ),
+            outstream.ready.eq( outfifo.w_rdy ),
+            outfifo.w_data.eq( Cat( outstream.payload, outstream.first, outstream.last ) ),
+
+            outstream_cdc.valid.eq( outfifo.r_rdy ),
+            outfifo.r_en.eq( outstream_cdc.ready ),
+            outstream_cdc.payload.eq( outfifo.r_data.bit_select(0,8) ),
+            outstream_cdc.first.eq  ( outfifo.r_data.bit_select(8,1) ),
+            outstream_cdc.last.eq   ( outfifo.r_data.bit_select(9,1) )
+        ]
+
+        m.submodules.asnycfifo_in = infifo = AsyncFIFO( width=10, depth=3, w_domain="sync", r_domain="usb" )
+        m.d.comb += [
+            infifo.w_en.eq( instream_cdc.valid ),
+            instream_cdc.ready.eq( infifo.w_rdy ),
+            infifo.w_data.eq( Cat( instream_cdc.payload, instream_cdc.first, instream_cdc.last ) ),
+
+            instream.valid.eq( infifo.r_rdy ),
+            infifo.r_en.eq( instream.ready ),
+            instream.payload.eq( infifo.r_data.bit_select(0,8) ),
+            instream.first.eq  ( infifo.r_data.bit_select(8,1) ),
+            instream.last.eq   ( infifo.r_data.bit_select(9,1) )
+        ]
+
+        # Loopback for test purposes
+   #     m.d.comb += [
+   #         instream_cdc.payload.eq(outstream_cdc.payload),
+   #         outstream_cdc.ready.eq(instream_cdc.ready),
+   #         instream_cdc.valid.eq(outstream_cdc.valid),
+   #         instream_cdc.last.eq(outstream_cdc.last)
+   #     ]
+
+        m.submodules.cmsisdap = cmsisdap = CMSIS_DAP( instream_cdc, outstream_cdc, dbgpins, self.isV2 )
 
         # Connect our device as a high speed device by default.
         m.d.comb += [
