@@ -35,13 +35,14 @@ class CRG(Module):
         #self.comb += pll.reset.eq(~por_done | ~rst_n | self.rst)
         self.comb += pll.reset.eq(~por_done | self.rst)
         pll.register_clkin(clk_in, clk_in_freq)
-        pll.create_clkout(self.cd_sys2x_i, 2*sys_clk_freq)
+        #pll.create_clkout(self.cd_sys2x_i, 2*sys_clk_freq)
+        pll.create_clkout(self.cd_sys2x, 2*sys_clk_freq)
         pll.create_clkout(self.cd_init, 25e6)
         self.specials += [
-            Instance("ECLKSYNCB",
-                i_ECLKI = self.cd_sys2x_i.clk,
-                i_STOP  = self.stop,
-                o_ECLKO = self.cd_sys2x.clk),
+            #Instance("ECLKSYNCB",
+            #    i_ECLKI = self.cd_sys2x_i.clk,
+            #    i_STOP  = self.stop,
+            #    o_ECLKO = self.cd_sys2x.clk),
             Instance("CLKDIVF",
                 p_DIV     = "2.0",
                 i_ALIGNWD = 0,
@@ -49,7 +50,7 @@ class CRG(Module):
                 i_RST     = self.reset,
                 o_CDIVX   = self.cd_sys.clk),
             AsyncResetSynchronizer(self.cd_sys,   ~pll.locked | self.reset | self.rst),
-            AsyncResetSynchronizer(self.cd_sys2x, ~pll.locked | self.reset | self.rst),
+            #AsyncResetSynchronizer(self.cd_sys2x, ~pll.locked | self.reset | self.rst),
         ]
 
     def add_usb(self):

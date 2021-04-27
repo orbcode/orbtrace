@@ -150,10 +150,6 @@ class TraceCore(Module):
     def __init__(self, platform):
         self.clock_domains.cd_trace = ClockDomain()
 
-        ctl_pads = platform.request('trace_ctl')
-
-        self.comb += ctl_pads.vdrive_en_n.eq(0)
-
         pads = platform.request('trace')
 
         self.source = source = Endpoint([('data', 128)])

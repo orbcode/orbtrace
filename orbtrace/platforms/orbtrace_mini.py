@@ -18,8 +18,17 @@ _io = [
     # TODO:
     # programn
     # btn
-    # debug
     # power
+
+    # Debug # FIXME: this is incomplete
+    ('debug', 0,
+        Subsignal('jtck',     Pins('B13')),
+        Subsignal('jtms',     Pins('A14')),
+        Subsignal('jtms_dir', Pins('A15')),
+        Subsignal('jtdo',     Pins('B12')),
+        Subsignal('jtdi',     Pins('A12')),
+        IOStandard('LVCMOS33')
+    ),
 
     # Trace
     ('trace', 0,

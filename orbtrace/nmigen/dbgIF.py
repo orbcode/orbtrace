@@ -37,7 +37,7 @@ class DBGIF(Elaboratable):
             "dbgIF",
 	    i_rst = ResetSignal("sync"),
             #i_clk = ClockSignal("sync"),
-            i_clk = ClockSignal("sys2"),
+            i_clk = ClockSignal("sys2x"),
 
             # Gross control - power etc
             i_vsen      = 1,

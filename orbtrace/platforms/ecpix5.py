@@ -11,13 +11,25 @@ class Platform(lambdaconcept_ecpix5.Platform):
         super().__init__(*args, **kwargs)
 
         self.add_extension([
+            ('debug', 0,
+                Subsignal('jtck', Pins('pmod6:1')),
+                Subsignal('jtms', Pins('pmod6:7')),
+                Subsignal('jtms_dir', Pins('pmod6:3')),
+                Subsignal('jtdo', Pins('pmod7:3')),
+                Subsignal('jtdi', Pins('pmod6:6')),
+
+                Subsignal('reseten', Pins('pmod6:4')),
+                Subsignal('nreset_sense', Pins('pmod7:7')),
+            ),
             ('trace', 0,
                 Subsignal('clk', Pins('pmod7:2')),
                 Subsignal('data', Pins('pmod7:6 pmod7:1 pmod7:5 pmod7:4')),
             ),
-            ('trace_ctl', 0,
-                Subsignal('vdrive_en_n', Pins('pmod6:2')),
+            ('target_power', 0,
+                Subsignal('vtref_en_n', Pins('pmod6:2')),
+                Subsignal('vtpwr_en_n', Pins('pmod6:5')),
             ),
+            ('canary', 0, Pins('pmod4:0')),
             ('serial_led', 0, Pins('pmod5:0')),
         ])
 

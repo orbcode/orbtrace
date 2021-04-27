@@ -7,12 +7,14 @@ from .trace import TraceCore
 from .nmigen_glue.wrapper import Wrapper
 from .nmigen_glue.luna import USBDevice, USBStreamOutEndpoint, USBStreamInEndpoint, USBMultibyteStreamInEndpoint
 from .nmigen_glue.usb_mem_bridge import MemRequestHandler
+from .nmigen_glue.cmsis_dap import CMSIS_DAP
 
+from usb_protocol.types      import USBTransferType
 from usb_protocol.emitters   import DeviceDescriptorCollection
 from usb_protocol.emitters.descriptors import cdc
 
 from litex.soc.interconnect import stream
-from litex.soc.interconnect.stream import Endpoint, Pipeline, AsyncFIFO, ClockDomainCrossing, Converter
+from litex.soc.interconnect.stream import Endpoint, Pipeline, AsyncFIFO, ClockDomainCrossing, Converter, Multiplexer, Demultiplexer
 from litex.soc.interconnect.axi import AXILiteInterface, AXILiteClockDomainCrossing
 
 class USBAllocator:
@@ -71,8 +73,173 @@ class OrbSoC(SoCCore):
         # Trace
         self.add_trace()
 
+        # Debug
+        self.add_debug()
+
+        # Target power
+        self.add_target_power()
+
         # USB
         self.finalize_usb()
+
+    def add_target_power(self):
+        pads = self.platform.request('target_power')
+
+        self.comb += [
+            pads.vtref_en_n.eq(1),
+            pads.vtpwr_en_n.eq(0),
+        ]
+
+    def add_debug(self, with_v1 = True, with_v2 = True):
+        # Add verilog sources.
+        self.platform.add_source('verilog/dbgIF.v')
+        self.platform.add_source('verilog/swdIF.v')
+
+        # CMSIS-DAP.
+        self.submodules.cmsis_dap = CMSIS_DAP(self.platform.request('debug'), wrapper = self.wrapper)
+
+        if with_v1:
+            # USB interface.
+            if_num = self.usb_alloc.interface()
+            in_ep_num = self.usb_alloc.in_ep()
+            out_ep_num = self.usb_alloc.out_ep()
+
+            # USB descriptors.
+            with self.usb_conf_desc.InterfaceDescriptor() as i:
+                i.bInterfaceNumber   = if_num
+                i.bInterfaceClass    = 0x03
+                i.bInterfaceSubclass = 0x00
+                i.bInterfaceProtocol = 0x00
+
+                i.iInterface = 'CMSIS-DAP v1'
+
+                # This is the HID descriptor
+                i.add_subordinate_descriptor(b"\x09\x21\x11\x01\x00\x01\x22\x21\x00")
+                self.usb_descriptors.add_descriptor(b"\x06\x00\xFF\x09\x01\xA1\x01\x15\x00\x26\xFF\x00\x75\x08\x95\x40\x09\x01\x81"
+                                                    b"\x02\x95\x40\x09\x01\x91\x02\x95\x01\x09\x01\xB1\x02\xC0", descriptor_type=0x22)
+
+                with i.EndpointDescriptor() as e:
+                    e.bEndpointAddress = 0x80 | in_ep_num
+                    e.wMaxPacketSize   = 64
+                    e.bmAttributes     = USBTransferType.INTERRUPT
+                    e.bInterval        = 1
+
+                with i.EndpointDescriptor() as e:
+                    e.bEndpointAddress = out_ep_num
+                    e.wMaxPacketSize   = 64
+                    e.bmAttributes     = USBTransferType.INTERRUPT
+                    e.bInterval        = 1
+
+            # Endpoint handlers.
+            in_ep_v1 = USBStreamInEndpoint(
+                endpoint_number = in_ep_num,
+                max_packet_size = 64,
+            )
+            self.usb.add_endpoint(in_ep_v1)
+
+            out_ep_v1 = USBStreamOutEndpoint(
+                endpoint_number = out_ep_num,
+                max_packet_size = 64,
+            )
+            self.usb.add_endpoint(out_ep_v1)
+
+        if with_v2:
+            # USB interface.
+            if_num = self.usb_alloc.interface()
+            in_ep_num = self.usb_alloc.in_ep()
+            out_ep_num = self.usb_alloc.out_ep()
+
+            # USB descriptors.
+            with self.usb_conf_desc.InterfaceDescriptor() as i:
+                i.bInterfaceNumber   = if_num
+                i.bInterfaceClass    = 0xff
+                i.bInterfaceSubclass = 0
+                i.bInterfaceProtocol = 0
+
+                i.iInterface = 'CMSIS-DAP v2'
+
+                # CMSIS-DAPv2 endpoints need to be in a specific order...
+                with i.EndpointDescriptor() as e:
+                    e.bEndpointAddress = out_ep_num
+                    e.wMaxPacketSize   = 512
+
+                with i.EndpointDescriptor() as e:
+                    e.bEndpointAddress = 0x80 | in_ep_num
+                    e.wMaxPacketSize   = 512
+
+            # Endpoint handlers.
+            in_ep_v2 = USBStreamInEndpoint(
+                endpoint_number = in_ep_num,
+                max_packet_size = 512,
+            )
+            self.usb.add_endpoint(in_ep_v2)
+
+            out_ep_v2 = USBStreamOutEndpoint(
+                endpoint_number = out_ep_num,
+                max_packet_size = 512,
+            )
+            self.usb.add_endpoint(out_ep_v2)
+
+        # Stream CDC.
+        stream_desc = [('data', 8)]
+
+        in_stream = Endpoint(stream_desc)
+        out_stream = Endpoint(stream_desc)
+
+        in_cdc = ClockDomainCrossing(stream_desc, 'sys', 'usb')
+        out_cdc = ClockDomainCrossing(stream_desc, 'usb', 'sys')
+
+        pipeline = Pipeline(out_stream, out_cdc, self.cmsis_dap, in_cdc, in_stream)
+
+        self.submodules += in_cdc, out_cdc, pipeline
+
+        # Interface mux.
+        is_v2 = Signal()
+        self.comb += self.cmsis_dap.is_v2.eq(is_v2)
+
+        can = self.platform.request('canary')
+        self.comb += can.eq(self.cmsis_dap.can)
+
+        if with_v1 and with_v2:
+            out_mux = Multiplexer(stream_desc, 2)
+            in_demux = Demultiplexer(stream_desc, 2)
+
+            self.comb += [
+                out_ep_v1.source.connect(out_mux.sink0),
+                out_ep_v2.source.connect(out_mux.sink1),
+                out_mux.source.connect(out_stream),
+                out_mux.sel.eq(is_v2),
+
+                in_stream.connect(in_demux.sink),
+                in_demux.source0.connect(in_ep_v1.sink),
+                in_demux.source1.connect(in_ep_v2.sink),
+                in_demux.sel.eq(is_v2),
+            ]
+
+            self.sync.usb += [
+                If(out_ep_v1.source.valid,
+                    is_v2.eq(0),
+                ),
+                If(out_ep_v2.source.valid,
+                    is_v2.eq(1),
+                ),
+            ]
+
+            self.submodules += out_mux, in_demux
+
+        elif with_v1:
+            self.comb += [
+                out_ep_v1.source.connect(out_stream),
+                in_stream.connect(in_ep_v1.sink),
+                is_v2.eq(0),
+            ]
+
+        elif with_v2:
+            self.comb += [
+                out_ep_v2.source.connect(out_stream),
+                in_stream.connect(in_ep_v2.sink),
+                is_v2.eq(1),
+            ]
 
     def add_trace(self):
         # Trace core.
@@ -215,7 +382,7 @@ class OrbSoC(SoCCore):
 
             d.iManufacturer      = "Orbcode"
             d.iProduct           = "Orbtrace"
-            #d.iSerialNumber      = ""
+            d.iSerialNumber      = "N/A"
 
             d.bNumConfigurations = 1
         
@@ -244,3 +411,4 @@ class OrbSoC(SoCCore):
         self.submodules.wrapper = Wrapper(self.platform)
 
         self.wrapper.connect_domain('sys')
+        self.wrapper.connect_domain('sys2x')

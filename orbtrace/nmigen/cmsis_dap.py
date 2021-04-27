@@ -138,6 +138,9 @@ class WideRam(Elaboratable):
 
 class CMSIS_DAP(Elaboratable):
     def __init__(self, streamIn, streamOut, dbgpins, v2Indication):
+        # Canary
+        self.can          = Signal()
+
         # External interface
         self.running      = Signal()       # Flag for if target is running
         self.connected    = Signal()       # Flag for if target is connected
@@ -996,7 +999,7 @@ class CMSIS_DAP(Elaboratable):
     # -------------------------------------------------------------------------------------
 
     def elaborate(self,platform):
-        self.can      = platform.request("canary")
+        #self.can      = platform.request("canary")
         done_cdc      = Signal(2)
         self.dbg_done = Signal()
 
