@@ -3,13 +3,6 @@ specifically indicated in the head of any specific file or in a file
 called LICENSE in a specific directory (affecting that directory and all
 of its descendants).
 
-Specifically, please take note that SUMP2 has different licencing;
-
-The FPGA for SUMP2 in orbtrace/src/sump2 is under CERN Open Hardware Licence V1.2
-
-Sump2 itself is GPL and is downloadable directly from Kevin Hubbards site at
-https://blackmesalabs.wordpress.com/2016/10/24/sump2-96-msps-logic-analyzer-for-22/
-
 BSD License
 ===========
 
