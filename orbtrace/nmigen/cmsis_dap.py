@@ -708,7 +708,7 @@ class CMSIS_DAP(Elaboratable):
                         self.streamIn.payload.eq(self.txBlock.word_select(self.txb-8,8)),
                         self.streamIn.valid.eq(1),
                         self.txb.eq(self.txb+1),
-                        self.streamIn.last.eq((self.txb==10) & (self.tfrram.adr==0))
+                        self.streamIn.last.eq(self.isV2 & (self.txb==10) & (self.tfrram.adr==0))
                     ]
 
             with m.Case(11): # Initial data sent, send any remaining material ------------------------------------------
@@ -854,7 +854,7 @@ class CMSIS_DAP(Elaboratable):
                         self.streamIn.valid.eq(1),
                         self.txb.eq(self.txb+1),
                         # End of transfer if there are no data to return
-                        self.streamIn.last.eq((self.txb==10) & (self.dbgif.rnw==0))
+                        self.streamIn.last.eq(self.isV2 & (self.txb==10) & (self.dbgif.rnw==0))
                     ]
 
             with m.Case(11): # Initial data sent, decide what to do next ----------------------------------------------
@@ -880,7 +880,7 @@ class CMSIS_DAP(Elaboratable):
                         self.txb.eq(1)
                         ]
                 with m.Else():
-                    m.next = 'IDLE'
+                    m.d.sync += self.txb.eq(7)
 
             with m.Case(1): # Wait for ram to propagate through -------------------------------------------------------
                 m.d.sync += self.txb.eq(2)
@@ -899,9 +899,7 @@ class CMSIS_DAP(Elaboratable):
                         self.txb.eq(self.txb+1),
                         self.streamIn.payload.eq(self.tfrram.dat_r.word_select(self.txb-2,8)),
                         # 5 because of pipeline
-                        self.streamIn.last.eq(  (self.isV2 & (self.transferCount==0) & (self.txb==5)) |
-                                                ((~self.isV2) & (self.transferCount==0) & (self.txb==5) & (self.txedLen==DAP_V1_MAX_PACKET_SIZE))
-                                                ),
+                        self.streamIn.last.eq(self.isV2 & (self.transferCount==0) & (self.txb==5)),
                         self.streamIn.valid.eq(self.txb!=6)
                     ]
 
@@ -1095,9 +1093,7 @@ class CMSIS_DAP(Elaboratable):
 
                         # This is the end of the packet if we've filled the length and it's v2
                         # or if we've filled the packet and it's v1
-                        self.streamIn.last.eq(
-                            (self.isV2 & (self.txedLen==self.txLen-1)) |
-                            ((~self.isV2) & (self.txedLen==DAP_V1_MAX_PACKET_SIZE-1)) ),
+                        self.streamIn.last.eq(self.isV2 & (self.txedLen==self.txLen-1)),
                     ]
 
                     with m.If(self.streamIn.ready & self.streamIn.valid):
@@ -1122,7 +1118,6 @@ class CMSIS_DAP(Elaboratable):
                     m.d.sync += [
                         self.streamIn.valid.eq(1),
                         self.streamIn.payload.eq(0),
-                        self.streamIn.last.eq(self.txedLen==DAP_V1_MAX_PACKET_SIZE-1)
                     ]
 
                     with m.If(self.txedLen<DAP_V1_MAX_PACKET_SIZE-1):
