@@ -36,7 +36,7 @@ class ECPIX5DomainGenerator(Elaboratable):
 
         # Create our domains.
         m.domains.sync   = ClockDomain()
-        m.domains.sys2   = ClockDomain()
+        m.domains.sys2x  = ClockDomain()
         m.domains.usb    = ClockDomain()
 
         # Grab our clock and global reset signals.
@@ -54,7 +54,7 @@ class ECPIX5DomainGenerator(Elaboratable):
                 # Generated clock outputs.
                 o_CLKOP=feedback,
                 o_CLKOS= ClockSignal("sync"),
-                o_CLKOS2=ClockSignal("sys2"),
+                o_CLKOS2=ClockSignal("sys2x"),
 
                 # Status.
                 o_LOCK=locked,
@@ -120,7 +120,7 @@ class ECPIX5DomainGenerator(Elaboratable):
         # Control our resets.
         m.d.comb += [
             ResetSignal("sync")    .eq(~locked),
-            ResetSignal("sys2")    .eq(~locked),
+            ResetSignal("sys2x")   .eq(~locked),
             ResetSignal("usb")     .eq(~locked),
         ]
 
