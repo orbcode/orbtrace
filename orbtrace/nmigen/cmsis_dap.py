@@ -69,7 +69,7 @@ CMD_TRANSACT             = 2
 CMD_SET_SWD              = 3
 CMD_SET_JTAG             = 4
 CMD_SET_SWJ              = 5
-CMD_SET_PWRDOWN          = 6
+#UNUSED                  = 6
 CMD_SET_CLK              = 7
 CMD_SET_CFG              = 8
 CMD_WAIT                 = 9
@@ -997,10 +997,9 @@ class CMSIS_DAP(Elaboratable):
     # -------------------------------------------------------------------------------------
 
     def elaborate(self,platform):
-        #self.can      = platform.request("canary")
+        self.can      = platform.request("canary")
         done_cdc      = Signal(2)
         self.dbg_done = Signal()
-
 
         m = Module()
         # Reset everything before we start
@@ -1009,9 +1008,10 @@ class CMSIS_DAP(Elaboratable):
         m.d.comb += self.streamOut.ready.eq(~self.busy)
 
         m.submodules.tfrram = self.tfrram = WideRam()
+
         m.submodules.dbgif = self.dbgif = DBGIF(self.dbgpins)
 
-        m.d.comb += self.can.eq(self.dbgif.c)
+        m.d.comb += self.can.eq(self.dbgif.canary)
 
         # Organise the CDC from the debug interface
         m.d.sync += done_cdc.eq(Cat(done_cdc[1],self.dbgif.done))

@@ -87,7 +87,7 @@ class ECPIX5DomainGenerator(Elaboratable):
                 p_OUTDIVIDER_MUXA="DIVA",
                 p_CLKOP_ENABLE="ENABLED",
                 p_CLKOS3_DIV=1,
-                p_CLKOS2_DIV=5,
+                p_CLKOS2_DIV=6,
                 p_CLKOS_DIV=6,
                 p_CLKOP_DIV=6,
                 p_CLKFB_DIV=1,

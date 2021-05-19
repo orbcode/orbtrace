@@ -185,7 +185,7 @@ class OrbtraceDevice(Elaboratable):
         self.leds_out = Signal(8)
 
         m = Module()
-        dbgpins = platform.request("dbgif",0)
+        dbgpins = platform.request("dbgif",0, xdr={ "tms_swdio":1, "swdwr":1, "tdi":1, "tdo_swo":1 })
 
         # State of things to be reported via the USB link
         m.d.comb += self.leds_out.eq(Cat( self.dat_ind, self.tx_ind, C(0,3), self.ovf_ind, self.inv_ind, self.hb_ind ))
@@ -307,14 +307,6 @@ class OrbtraceDevice(Elaboratable):
             instream.first.eq  ( infifo.r_data.bit_select(8,1) ),
             instream.last.eq   ( infifo.r_data.bit_select(9,1) )
         ]
-
-        # Loopback for test purposes
-   #     m.d.comb += [
-   #         instream_cdc.payload.eq(outstream_cdc.payload),
-   #         outstream_cdc.ready.eq(instream_cdc.ready),
-   #         instream_cdc.valid.eq(outstream_cdc.valid),
-   #         instream_cdc.last.eq(outstream_cdc.last)
-   #     ]
 
         m.submodules.cmsisdap = cmsisdap = CMSIS_DAP( instream_cdc, outstream_cdc, dbgpins, self.isV2 )
 
