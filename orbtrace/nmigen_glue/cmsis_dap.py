@@ -9,6 +9,8 @@ from ..nmigen import cmsis_dap
 
 from litex.soc.interconnect.stream import Endpoint
 
+from litex.build.io import SDROutput, SDRTristate
+
 class CMSIS_DAP(Module):
     def __init__(self, pads, wrapper):
         self.source = Endpoint([('data', 8)])
@@ -17,14 +19,14 @@ class CMSIS_DAP(Module):
         self.can = Signal()
 
         dbgpins = nmigen.Record([
-            ('tck_swclk', 1, DIR_FANOUT),
+            ('tck_swclk', [('o', 1, DIR_FANOUT)]),
             ('nvdriveen', 1, DIR_FANOUT),
-            ('swdwr', 1, DIR_FANOUT),
+            ('swdwr', [('o', 1, DIR_FANOUT), ('o_clk', 1, DIR_FANOUT)]),
             ('reseten', 1, DIR_FANOUT),
             ('nvsen', 1, DIR_FANOUT),
-            ('tdi', 1, DIR_FANOUT),
-            ('tms_swdio', [('i', 1, DIR_FANIN), ('o', 1, DIR_FANOUT), ('oe', 1, DIR_FANOUT)]),
-            ('tdo_swo', [('i', 1, DIR_FANIN)]),
+            ('tdi', [('o', 1, DIR_FANOUT), ('o_clk', 1, DIR_FANOUT)]),
+            ('tms_swdio', [('i', 1, DIR_FANIN), ('o', 1, DIR_FANOUT), ('oe', 1, DIR_FANOUT), ('o_clk', 1, DIR_FANOUT), ('i_clk', 1, DIR_FANOUT)]),
+            ('tdo_swo', [('i', 1, DIR_FANIN), ('i_clk', 1, DIR_FANOUT)]),
             ('nreset_sense', [('i', 1, DIR_FANIN)]),
         ])
 
@@ -52,16 +54,21 @@ class CMSIS_DAP(Module):
 
         wrapper.connect(self.can, dap.can)
 
-        jtms = TSTriple(8)
-        self.specials += jtms.get_tristate(pads.jtms)
+        wrapper.connect(pads.jtck, dbgpins.tck_swclk.o)
 
-        wrapper.connect(pads.jtck, dbgpins.tck_swclk)
+        self.specials += SDROutput(
+            o = pads.jtms_dir,
+            i = wrapper.from_nmigen(dbgpins.swdwr.o),
+            clk = wrapper.from_nmigen(dbgpins.swdwr.o_clk),
+        )
 
-        wrapper.connect(jtms.i, dbgpins.tms_swdio.i)
-        wrapper.connect(jtms.o, dbgpins.tms_swdio.o)
-        wrapper.connect(jtms.oe, dbgpins.tms_swdio.oe)
-
-        wrapper.connect(pads.jtms_dir, dbgpins.swdwr)
+        self.specials += SDRTristate(
+            io = pads.jtms,
+            i = wrapper.from_nmigen(dbgpins.tms_swdio.i),
+            o = wrapper.from_nmigen(dbgpins.tms_swdio.o),
+            oe = wrapper.from_nmigen(dbgpins.tms_swdio.oe),
+            clk = wrapper.from_nmigen(dbgpins.tms_swdio.o_clk),
+        )
 
         wrapper.connect(pads.reseten, dbgpins.reseten)
         wrapper.connect(pads.nreset_sense, dbgpins.nreset_sense.i)
