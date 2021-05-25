@@ -24,14 +24,25 @@ class Wrapper(migen.Module):
         self.connect(migen.ClockSignal(name), nmigen.ClockSignal(n))
         self.connect(migen.ResetSignal(name), nmigen.ResetSignal(n))
 
+    def from_nmigen(self, nmigen_sig):
+        shape = nmigen_sig.shape()
+        migen_sig = migen.Signal((shape.width, shape.signed), name = nmigen_sig.name)
+
+        self.connect(migen_sig, nmigen_sig)
+
+        return migen_sig
+
     def get_instance(self):
         connections = {}
 
         for m, n in self.connections:
             module, name, *_ = self.nmigen_name_map[n]
             direction = self.nmigen_dir_map[n]
+            s = f'{direction}_{name}'
 
-            connections[f'{direction}_{name}'] = m
+            assert s not in connections, f'Signal {s} connected multiple times.'
+
+            connections[s] = m
 
         return migen.Instance(self.name, **connections)
 

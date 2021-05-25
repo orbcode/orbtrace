@@ -310,6 +310,9 @@ class OrbtraceDevice(Elaboratable):
 
         m.submodules.cmsisdap = cmsisdap = CMSIS_DAP( instream_cdc, outstream_cdc, dbgpins, self.isV2 )
 
+        can = platform.request("canary")
+        m.d.comb += can.eq(cmsisdap.can)
+
         # Connect our device as a high speed device by default.
         m.d.comb += [
             usb.connect          .eq(1),

@@ -997,7 +997,6 @@ class CMSIS_DAP(Elaboratable):
     # -------------------------------------------------------------------------------------
 
     def elaborate(self,platform):
-        self.can      = platform.request("canary")
         done_cdc      = Signal(2)
         self.dbg_done = Signal()
 
