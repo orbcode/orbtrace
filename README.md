@@ -7,7 +7,7 @@ The current gateware runs on the ECPIX-5 development board and (optional) breako
 
 Alongside the TRACE capability, ORBTrace is one of the fastest CMSIS-DAP interfaces on the planet. Here's the results of some simple testing;
 
-![Table](https://raw.githubusercontent.com/orbcode/orbuculum/main/docs/source/resources/performance.png)
+![Table](https://raw.githubusercontent.com/orbcode/orbtrace/main/docs/source/resources/performance.png)
 
 On the Debug side the gateware exports cmsis-dap v1 and v2 interfaces. These have been validated against BlackMagic Probe and pyOCD. Information about success with other cmsis-dap clients gratefully received (and bug reports too, so we can fix them).
 
