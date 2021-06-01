@@ -2,14 +2,14 @@ Documentation
 =============
 
 Orbtrace must be properly documented! The documentation is maintained at
-[Read The Docs](https://orbtrace.readthedocs.io) and is auto-built from the
+`Read The Docs <https://orbtrace.readthedocs.io>`_ and is auto-built from the
 committed github main repository.
 
 Editing
 -------
 
 Edit the contents of ``docs/source/*.rst`` to update the documentation. If you have
-the [Sphinx Documentation Generator] (https://www.sphinx-doc.org/en/master/) installed locally you can get a live preview of the current code by running something like;
+the `Sphinx Documentation Generator <https://www.sphinx-doc.org/en/master/>`_ installed locally you can get a live preview of the current code by running something like;
 
 ```sphinx-autobuild --port 1232 ~/Develop/orbtrace/docs/source/ /tmp/sp```
 
