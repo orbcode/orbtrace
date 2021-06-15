@@ -1,5 +1,5 @@
 from nmigen                  import *
-from .dbgIF                   import DBGIF
+from .dbgIF                  import DBGIF
 
 # Principle of operation
 # ======================
@@ -18,9 +18,8 @@ from .dbgIF                   import DBGIF
 
 DAP_CONNECT_DEFAULT      = 1                # Default connect is SWD
 DAP_VERSION_STRING       = Cat(C(0x31,8),C(0x2e,8),C(0x30,8),C(0x30,8),C(0,8))
-DAP_CAPABILITIES         = 0x01             # SWD Debug only (for now)
+DAP_CAPABILITIES         = 0x03             # JTAG and SWD Debug
 DAP_TD_TIMER_FREQ        = 0x3B9ACA00       # 1uS resolution timer
-DAP_TB_SIZE              = 500              # 500 bytes in trace buffer
 DAP_MAX_PACKET_COUNT     = 1                # 1 max packet count
 DAP_V1_MAX_PACKET_SIZE   = 64
 DAP_V2_MAX_PACKET_SIZE   = 512
@@ -69,13 +68,15 @@ CMD_TRANSACT             = 2
 CMD_SET_SWD              = 3
 CMD_SET_JTAG             = 4
 CMD_SET_SWJ              = 5
-#UNUSED                  = 6
+CMD_SET_JTAG_CFG         = 6
 CMD_SET_CLK              = 7
-CMD_SET_CFG              = 8
+CMD_SET_SWD_CFG          = 8
 CMD_WAIT                 = 9
 CMD_CLR_ERR              = 10
 CMD_SET_RST_TMR          = 11
 CMD_SET_TFR_CFG          = 12
+CMD_JTAG_GET_ID          = 13
+CMD_JTAG_RESET           = 14
 
 # TODO/Done
 # =========
@@ -92,13 +93,13 @@ CMD_SET_TFR_CFG          = 12
 # DAP_SWJ_Sequence       : Done
 # DAP_SWD_Configure      : Done
 # DAP_SWD_Sequence       :
-# DAP_SWO_Transport      :
-# DAP_SWO_Mode           :
-# DAP_SWO_Baudrate       :
-# DAP_SWO_Control        :
-# DAP_SWO_Status         :
-# DAP_SWO_ExtendedStatus :
-# DAP_SWO_Data           :
+# DAP_SWO_Transport      : Not implemented
+# DAP_SWO_Mode           : Not implemented
+# DAP_SWO_Baudrate       : Not implemented
+# DAP_SWO_Control        : Not implemented
+# DAP_SWO_Status         : Not implemented
+# DAP_SWO_ExtendedStatus : Not implemented
+# DAP_SWO_Data           : Not implemented
 # DAP_JTAG_Sequence      :
 # DAP_JTAG_Configure     :
 # DAP_JTAG_IDCODE        :
@@ -158,7 +159,6 @@ class CMSIS_DAP(Elaboratable):
         self.txedLen      = Signal(range(MAX_MSG_LEN))     # Length of response that has been returned so far
         self.busy         = Signal()       # Indicator that we can't receive stream traffic at the moment
 
-        self.maxSWObytes  = Signal(16)     # Maximum number of receivable SWO bytes from protocol packet
         self.txb          = Signal(5)      # State of various orthogonal state machines
 
         # Support for SWJ_Sequence
@@ -168,10 +168,13 @@ class CMSIS_DAP(Elaboratable):
         self.tmsValue     = Signal()       # TMS value while performing JTAG sequence
         self.tdoCapture   = Signal()       # Are we capturing TDO when performing JTAG sequence
         self.tdiData      = Signal(8)      # TDI being sent out
-        self.tdoCount     = Signal(7)      # Count of tdi bits being sent (in txBlock)
+        self.tdoCount     = Signal(4)      # Count of tdi bits being sent
+        self.tdiCount     = Signal(4)      # Count of tdi bits being received
         self.seqCount     = Signal(8)      # Number of sequences that follow
         self.tckCycles    = Signal(6)      # Number of tckCycles in this sequence
-        self.bytebits     = Signal(4)      # Number of bits in this byte that have been transmitted
+        self.tdotgt       = Signal(7)      # Number of tdo cycles to collect (note the extra bit)
+        self.pendingTx    = Signal(8)      # Next octet to be sent out of streamIn
+        self.tdoBuild     = Signal(8)      # Return value being built
 
         # Support for DAP_Transfer
         self.dapIndex     = Signal(8)      # Index of selected JTAG device
@@ -216,7 +219,7 @@ class CMSIS_DAP(Elaboratable):
             with m.Case(0xF1): # Get the Test Domain Timer parameter information
                 m.d.sync+=[self.txLen.eq(6), self.txBlock[8:56].eq(Cat(C(8,8),C(DAP_TD_TIMER_FREQ,32)))]
             with m.Case(0xFD): # Get the SWO Trace Buffer Size (WORD)
-                m.d.sync+=[self.txLen.eq(6), self.txBlock[8:48].eq(Cat(C(4,8),C(DAP_TB_SIZE,32)))]
+                m.d.sync+=[self.txLen.eq(6), self.txBlock[8:48].eq(Cat(C(4,8),C(0,32)))]
             with m.Case(0xFE): # Get the maximum Packet Count (BYTE)
                 m.d.sync+=[self.txLen.eq(6), self.txBlock[8:24].eq(Cat(C(1,8),C(DAP_MAX_PACKET_COUNT,8)))]
             with m.Case(0xFF): # Get the maximum Packet Size (SHORT).
@@ -226,6 +229,10 @@ class CMSIS_DAP(Elaboratable):
                     m.d.sync+=[self.txLen.eq(6), self.txBlock[8:32].eq(Cat(C(2,8),C(DAP_V1_MAX_PACKET_SIZE,16)))]
             with m.Default():
                 self.RESP_Invalid(m)
+    # -------------------------------------------------------------------------------------
+    def RESP_Not_Implemented(self, m):
+        m.d.sync += self.txBlock.word_select(1,8).eq(C(0xff,8))
+        m.next = 'RESPOND'
     # -------------------------------------------------------------------------------------
     def RESP_HostStatus(self, m):
         # <b:0x01> <b:type> <b:status>
@@ -334,7 +341,7 @@ class CMSIS_DAP(Elaboratable):
         # <b:0x10> <b:PinOutput> <b:PinSelect> <w:PinWait>
         # Control and monitor SWJ/JTAG pins
         m.d.sync += [
-            self.dbgif.dwrite.eq( Cat(C(0,16),self.rxBlock.bit_select(8,16)) ),
+            self.dbgif.pinsin.eq( self.rxBlock.bit_select(8,16) ),
             self.dbgif.countdown.eq( self.txBlock.bit_select(24,32) )
             ]
         m.next = 'DAP_SWJ_Pins_PROCESS';
@@ -343,7 +350,7 @@ class CMSIS_DAP(Elaboratable):
         # Spin waiting for debug interface to do its thing
         with m.If (self.dbg_done):
             m.d.sync += [
-                self.txBlock.word_select(1,8).eq(self.dbgif.dread[0:8]),
+                self.txBlock.word_select(1,8).eq(self.dbgif.pinsout),
                 self.txLen.eq(2)
             ]
         m.next = 'RESPOND'
@@ -423,124 +430,52 @@ class CMSIS_DAP(Elaboratable):
         # Setup configuration for SWD
         m.d.sync += [
             self.dbgif.dwrite.eq( self.rxBlock.bit_select(8,8) ),
-            self.dbgif.command.eq( CMD_SET_CFG ),
+            self.dbgif.command.eq( CMD_SET_SWD_CFG ),
             self.dbgif.go.eq(1)
             ]
         m.next = 'DAP_Wait_Done'
-    # -------------------------------------------------------------------------------------
-    def RESP_SWO_Transport(self, m):
-        # <b:0x17> <b:Transport>
-        # Set SWO transport
-        with m.If(self.rxBlock.word_select(1,8)>2):
-            m.d.sync += self.txBlock.word_select(1,8).eq(C(0xff,8))
-        m.next = 'RESPOND'
-    # -------------------------------------------------------------------------------------
-    def RESP_SWO_Mode(self, m):
-        # <b:0x18> <b:Mode>
-        # Set SWO mode (Manchester or UART)
-        with m.If(self.rxBlock.word_select(1,8)>2):
-            m.d.sync += self.txBlock.word_select(1,8).eq(C(0xff,8))
-        m.next = 'RESPOND'
-    # -------------------------------------------------------------------------------------
-    def RESP_SWO_Baudrate(self, m):
-        # <b:19> <w:Baudrate>
-        # Set SWO baudrate
-        m.d.sync += self.txBlock.eq(self.rxBlock)
-        m.d.sync += self.txLen.eq(5)
-        m.next = 'RESPOND'
-    # -------------------------------------------------------------------------------------
-    def RESP_SWO_Control(self, m):
-        # <b:0x1A> <b:Control>
-        # Start or Stop SWO transport
-        with m.If(self.rxBlock.word_select(1,8)>1):
-            m.d.sync += self.txBlock.word_select(1,8).eq(C(0xff,8))
-        m.next = 'RESPOND'
-    # -------------------------------------------------------------------------------------
-    def RESP_SWO_Status(self, m):
-        # <b:0x1B>
-        # SWO Status Request
-        m.d.sync += self.txBlock.bit_select(8,40).eq( Cat(C(0,8),C(0x11223344,32) ))
-        m.d.sync += self.txLen.eq(6)
-        m.next = 'RESPOND'
-    # -------------------------------------------------------------------------------------
-    def RESP_SWO_ExtendedStatus(self, m):
-        # <b:0x1E> <b:Control>
-        # Return Extended Status information about SWO
-        with m.If((self.rxBlock.word_select(1,8)&0xf8)!=0):
-            self.RESP_Invalid(m)
-        with m.Else():
-            m.d.sync += self.txBlock.bit_select(8,104).eq( Cat(C(0,8),C(0x11223344,32),C(0x55667788,32),C(0x99aabbcc,32) ))
-            m.d.sync += self.txLen.eq(14)
-            m.next = 'RESPOND'
-    # -------------------------------------------------------------------------------------
-    # -------------------------------------------------------------------------------------
-
-    def RESP_SWO_Data_Setup(self, m):
-        # <b:0x1C> <s:TraceCount>
-        # Triggered at the start of a RESP SWO Data Sequence
-        # No more data to receive, but a variable amount to send back...
-        m.d.comb += self.maxSWObytes.eq(self.rxBlock.bit_select(8,16))
-
-        m.d.sync += [
-            self.txLen.eq(Mux(self.maxSWObytes<100,self.maxSWObytes,100)),
-            self.txb.eq(0)
-            ]
-        m.next = 'DAP_SWO_Data_PROCESS'
-
-    def RESP_SWO_Data_Process(self, m):
-        m.next = 'RESPOND'
-        # with m.If(self.streamIn.ready):
-        #     # Triggered for each octet of a data stream
-        #     m.d.sync += self.streamIn.last.eq(0)
-
-        #     with m.Switch(self.txb):
-        #         with m.Case(0): # Response header
-        #             m.d.sync += self.streamIn.payload.eq(DAP_SWO_Data)
-        #             m.d.sync += self.txb.eq(1)
-
-        #         with m.Case(1): # Trace status
-        #             m.d.sync += self.streamIn.payload.eq(0)
-        #             m.d.sync += self.txb.eq(2)
-
-        #         with m.Case(2): # Count H
-        #             m.d.sync += self.streamIn.payload.eq(self.txLen.word_select(0,8))
-        #             m.d.sync += self.txb.eq(3)
-
-        #         with m.Case(3): # Count L
-        #             m.d.sync += self.streamIn.payload.eq(self.txLen.word_select(1,8))
-        #             m.d.sync += self.txb.eq(Mux(self.txLen,4,5))
-        #             with m.If(self.txLen==0):
-        #                 m.d.sync += self.streamIn.last.eq(1)
-
-        #         with m.Case(4): # Data to be sent
-        #             m.d.sync += self.streamIn.payload.eq(42)
-        #             m.d.sync += self.txLen.eq(self.txLen-1)
-        #             with m.If(self.txLen==1):
-        #                 m.d.sync += [
-        #                     self.streamIn.last.eq(1),
-        #                     self.txb.eq(5)
-        #                 ]
-
-        #         with m.Case(5):
-        #             m.next = 'IDLE'
-
-        #     with m.If(self.txb!=5):
-        #         m.d.sync += self.streamIn.valid.eq(1)
     # -------------------------------------------------------------------------------------
     # -------------------------------------------------------------------------------------
     def RESP_JTAG_Configure(self, m):
         # <b:0x15> <b:Count> n x [ <b:IRLength> ]
         # Set IR Length for Chain
-        m.d.sync += self.irlength.eq(self.rxBlock.word_select(2,8))
-        m.d.sync += self.ndev.eq(self.rxBlock.word_select(1,8))
-        m.next = 'RESPOND'
+
+        m.d.sync += [
+            # We cope with up to 5 devices with IRLen of 1..32 bits
+            self.dbgif.dwrite.eq( Cat( self.rxBlock.bit_select(11,5)-1,
+                                       self.rxBlock.bit_select(19,5)-1,
+                                       self.rxBlock.bit_select(27,5)-1,
+                                       self.rxBlock.bit_select(35,5)-1,
+                                       self.rxBlock.bit_select(43,5)-1,
+                                       self.rxBlock.bit_select(51,5)-1,
+                                       C(2,0) )
+                                 ),
+            self.dbgif.command.eq( CMD_SET_JTAG_CFG ),
+            self.dbgif.go.eq(1)
+            ]
+        m.next = 'DAP_Wait_Done'
     # -------------------------------------------------------------------------------------
-    def RESP_JTAG_IDCODE(self, m):
+    # -------------------------------------------------------------------------------------
+    def RESP_JTAG_IDCODE_Setup(self, m):
         # <b:0x16> <b:JTAGIndex>
         # Request ID code for specified device
-        m.d.sync += self.txBlock.bit_select(16,32).eq(0x44332211)
-        m.d.sync += self.txLen.eq(6)
-        m.next = 'RESPOND'
+        m.d.sync += [
+            self.dbgif.command.eq(CMD_JTAG_GET_ID),
+            self.dbgif.dwrite.eq( self.rxBlock.bit_select(8,8) ),
+            self.txLen.eq(6),
+            self.txBlock.bit_select(16,32).eq(0),
+            self.dbgif.go.eq(1)
+            ]
+
+        m.next = 'JTAG_IDCODE_Process'
+
+    def RESP_JTAG_IDCODE_Process(self, m):
+        with m.If(self.dbg_done==0):
+            m.d.sync += self.dbgif.go.eq(0)
+        with m.Elif(self.dbg_done==1):
+            m.d.sync += self.txBlock.bit_select(16,32).eq(self.dbgif.dread)
+            m.next = "RESPOND"
+
     # -------------------------------------------------------------------------------------
     def RESP_TransferConfigure(self, m):
         # <b:0x04> <b:IdleCycles> <s:WaitRetry> <s:MatchRetry>
@@ -925,74 +860,151 @@ class CMSIS_DAP(Elaboratable):
         # Collect how many sequences we'll be processing, then move to get the first one
         m.d.sync += [
             self.seqCount.eq(self.rxBlock.word_select(1,8)),
-            self.tdoCount.eq(16),  # TDI Data goes after packet ID and status
-            self.txBlock[16:].eq(0), # Blank out any TDI storage
+
+            # Setup to have control over tms, tdi and swwr (set for output), with clocks of 1 clock cycle
+            self.dbgif.dwrite.eq(0),
+
+            # Just for now take over reset as well
+            self.dbgif.pinsin.eq(0b0001_0111_0001_0000),
+            self.dbgif.command.eq(CMD_PINS_WRITE),
             self.txb.eq(0)
-            ]
+        ]
         m.next = 'DAP_JTAG_Sequence_PROCESS'
 
 
     def RESP_JTAG_Sequence_PROCESS(self,m):
-        m.d.sync += self.busy.eq(1)
+        m.d.sync += [
+            self.busy.eq(1),
+            self.streamIn.valid.eq(0)
+            ]
 
-        # If we're done then go home
-        with m.If(self.seqCount == 0):
-            # Packet response has been built in this state machine, so send it
-            m.d.sync += [
-                self.txLen.eq((self.tdoCount+7)>>3),
-                self.busy.eq(0)
+
+        m.d.sync += self.can.eq(0)
+
+        with m.Switch(self.txb):
+
+            # -------------- # Send frontmatter
+            with m.Case(0):
+                with m.If(self.streamIn.ready):
+                    m.d.sync += [
+                        # Send frontmatter for reponse
+                        self.streamIn.payload.eq(DAP_JTAG_Sequence),
+                        self.streamIn.last.eq(0),
+                        self.streamIn.valid.eq(1),
+
+                        # This is the 'OK' that will be sent out next
+                        self.pendingTx.eq(0),
+
+                        # If there's nothing to be done then we are finished, otherwise start
+                        self.txb.eq(Mux(self.seqCount!=0,1,7))
+                    ]
+
+            # --------------
+            with m.Case(1): # Get info for this sequence
+                with m.If(self.streamOut.ready & self.streamOut.valid):
+                    m.d.sync += [
+                        self.seqCount.eq(self.seqCount-1),
+                        self.tckCycles.eq(self.streamOut.payload.bit_select(0,6)),
+
+                        # Set the TMS bit
+                        self.dbgif.pinsin.bit_select(1,1).eq(self.streamOut.payload.bit_select(6,1)),
+
+                        # ...and decide if we want to capture what comes back
+                        self.tdotgt.eq(Mux(self.streamOut.payload.bit_select(7,1),
+                                           Mux(self.streamOut.payload.bit_select(0,6),self.streamOut.payload.bit_select(0,6),0x40),0)),
+
+                        self.txb.eq(2)
+                    ]
+                with m.Else():
+                    m.d.sync += self.busy.eq(0)
+
+            # --------------
+            with m.Case(2): # Waiting for TDI byte to arrive
+                with m.If(self.streamOut.ready & self.streamOut.valid):
+                    m.d.sync += [
+                        self.tdiData.eq(self.streamOut.payload),
+                        self.tdiCount.eq(0),
+
+                        self.txb.eq(3)
+                    ]
+                with m.Else():
+                    m.d.sync += self.busy.eq(0)
+
+            # --------------
+            with m.Case(3): # Setup for clocking out TDI, TCK->0
+                m.d.sync += [
+                    # Put this bit ready to output
+                    self.dbgif.pinsin.bit_select(2,1).eq(self.tdiData.bit_select(self.tdiCount,1)),
+                    self.dbgif.pinsin.bit_select(0,1).eq(0),
+                    self.dbgif.go.eq(1),
+
+                    self.txb.eq(4)
                 ]
-            m.next = 'RESPOND'
-        with m.Else():
-            # Otherwise...
-            with m.Switch(self.txb):
-                # --------------
-                with m.Case(0): # Get info for this sequence
-                    m.d.sync += self.busy.eq(0)
-                    with m.If(self.streamOut.ready & self.streamOut.valid):
-                        m.d.sync += [
-                            self.tckCycles.eq(self.streamOut.payload[0:6]),
-                            self.tmsValue.eq(self.streamOut.payload[6]),
-                            self.tdoCapture.eq(self.streamOut.payload[7]),
-                            self.txb.eq(1)
-                        ]
-                    # Just in case a previous sequence had tdoCapture on, round up the bits
-                    m.d.sync += self.tdoCount.eq((self.tdoCount+7)&0x78)
 
-                # --------------
-                with m.Case(1): # Waiting for TDI byte to arrive
-                    m.d.sync += self.busy.eq(0)
-                    with m.If(self.streamOut.ready & self.streamOut.valid):
-                        m.d.sync += [
-                            self.tdiData.eq(self.streamOut.payload),
-                            self.txb.eq(2),
-                            self.busy.eq(1),
-                            self.bytebits.eq(Mux(((self.tckCycles==0) | (self.tckCycles>7)),8,self.tckCycles))
-                            ]
-                # --------------
-                with m.Case(2): # Clocking out TDI and, perhaps, receiving TDO
-                    # We still need to deal with this bit...
-                    m.d.sync += self.tckCycles.eq(self.tckCycles-1)
-                    m.d.sync += self.bytebits.eq(self.bytebits-1)
+            # -------------
+            with m.Case(4): # Waiting until we can set TCK->1
+                with m.If(self.dbg_done==0):
+                    m.d.sync += self.dbgif.go.eq(0)
+                with m.If ((self.dbgif.go==0) & (self.dbg_done==1)):
+                    m.d.sync += [
+                        # Bit is established, change the clock
+                        self.dbgif.pinsin.bit_select(0,1).eq(1),
+                        self.dbgif.go.eq(1),
 
-                    # If this is the last bit of this byte, best go get another one
-                    with m.If(self.bytebits==1):
-                        m.d.sync += self.txb.eq(1)
+                        self.txb.eq(5)
+                    ]
 
-                    # ...and if we've got anything to record
-                    with m.If(self.tdoCapture):
+            # -------------
+            with m.Case(5): # Sent this bit, waiting for clock 1 to complete
+                with m.If(self.dbg_done==0):
+                    m.d.sync += self.dbgif.go.eq(0)
+                with m.If ((self.dbgif.go==0) & (self.dbg_done==1)):
+                    m.d.sync += [
+                        # Adjust all the pointers
+                        self.tckCycles.eq(self.tckCycles-1),
+                        self.tdiCount.eq(self.tdiCount+1),
+
+                        self.txb.eq(6)
+                    ]
+
+                    # If there is a capture in process then do it
+                    with m.If(self.tdotgt):
                         m.d.sync += [
+                            self.can.eq(self.dbgif.pinsout.bit_select(3,1)),
+                            self.tdoBuild.bit_select(self.tdoCount,1).eq(self.dbgif.pinsout.bit_select(3,1)),
                             self.tdoCount.eq(self.tdoCount+1),
-                            self.txBlock.bit_select(self.tdoCount,1).eq(self.bytebits==1)
+                            self.tdotgt.eq(self.tdotgt-1)
                         ]
-                        # Add code here for I/O
-                    m.d.sync += self.tdiData.eq(self.tdiData>>1)
 
-                    with m.If(self.tckCycles==1):
-                        # This sequence is done, so move to next transmission
-                        m.d.sync += self.seqCount.eq(self.seqCount-1)
-                        m.d.sync += self.txb.eq(0)
-                # --------------
+            # -------------
+            with m.Case(6): # ...if this capture is complete then send it back, then decide if there is still work to be done
+                with m.If(((self.tdotgt==0) & (self.tdoCount!=0)) | (self.tdoCount==8)):
+                    with m.If(self.streamIn.ready):
+                        m.d.sync += [
+                            self.streamIn.payload.eq(self.pendingTx),
+                            self.streamIn.valid.eq(1),
+                            self.pendingTx.eq(self.tdoBuild),
+                            self.tdoCount.eq(0),
+                            self.tdoBuild.eq(0)
+                        ]
+                with m.Else():
+                    with m.If(self.tckCycles==0):
+                        # This is the last bit of the sequence, go get the next, or finish
+                        m.d.sync += self.txb.eq(Mux(self.seqCount,1,7))
+                    with m.Else():
+                        # otherwise set up the next bit to clock out, or a new byte
+                        m.d.sync += self.txb.eq(Mux(self.tdiCount==8,2,3))
+
+            # -------------
+            with m.Case(7): # Send the final byte, with last set
+                with m.If(self.streamIn.ready):
+                    m.d.sync += [
+                        self.streamIn.payload.eq(self.pendingTx),
+                        self.streamIn.last.eq(1),
+                        self.streamIn.valid.eq(1)
+                    ]
+                    m.next = 'IDLE'
+
 
     # -------------------------------------------------------------------------------------
 
@@ -1009,8 +1021,6 @@ class CMSIS_DAP(Elaboratable):
         m.submodules.tfrram = self.tfrram = WideRam()
 
         m.submodules.dbgif = self.dbgif = DBGIF(self.dbgpins)
-
-        m.d.comb += self.can.eq(self.dbgif.canary)
 
         # Organise the CDC from the debug interface
         m.d.sync += done_cdc.eq(Cat(done_cdc[1],self.dbgif.done))
@@ -1185,25 +1195,25 @@ class CMSIS_DAP(Elaboratable):
                         # SWO Commands
                         # ============
                         with m.Case(DAP_SWO_Transport):
-                            self.RESP_SWO_Transport(m)
+                            self.RESP_Not_Implemented(m)
 
                         with m.Case(DAP_SWO_Mode):
-                            self.RESP_SWO_Mode(m)
+                            self.RESP_Not_Implemented(m)
 
                         with m.Case(DAP_SWO_Baudrate):
-                            self.RESP_SWO_Baudrate(m)
+                            self.RESP_Not_Implemented(m)
 
                         with m.Case(DAP_SWO_Control):
-                            self.RESP_SWO_Control(m)
+                            self.RESP_Not_Implemented(m)
 
                         with m.Case(DAP_SWO_Status):
-                            self.RESP_SWO_Status(m)
+                            self.RESP_Not_Implemented(m)
 
                         with m.Case(DAP_SWO_ExtendedStatus):
-                            self.RESP_SWO_ExtendedStatus(m)
+                            self.RESP_Not_Implemented(m)
 
                         with m.Case(DAP_SWO_Data):
-                            self.RESP_SWO_Data_Setup(m)
+                            self.RESP_Not_Implemented(m)
 
                         # JTAG Commands
                         # =============
@@ -1214,7 +1224,7 @@ class CMSIS_DAP(Elaboratable):
                             self.RESP_JTAG_Configure(m)
 
                         with m.Case(DAP_JTAG_IDCODE):
-                            self.RESP_JTAG_IDCODE(m)
+                            self.RESP_JTAG_IDCODE_Setup(m)
 
                         # Transfer Commands
                         # =================
@@ -1252,7 +1262,7 @@ class CMSIS_DAP(Elaboratable):
               self.RESP_SWJ_Pins_Process(m)
 
             with m.State('DAP_SWO_Data_PROCESS'):
-              self.RESP_SWO_Data_Process(m)
+              self.RESP_Not_Implemented(m)
 
             with m.State('DAP_SWJ_Sequence_PROCESS'):
                 self.RESP_SWJ_Sequence_Process(m)
@@ -1268,6 +1278,9 @@ class CMSIS_DAP(Elaboratable):
 
             with m.State('UPLOAD_RXED_DATA'):
               self.RESP_Transfer_Complete(m)
+
+            with m.State('JTAG_IDCODE_Process'):
+              self.RESP_JTAG_IDCODE_Process(m)
 
             with m.State('DAP_SWD_Sequence_GetCount'):
                 self.RESP_Invalid(m)

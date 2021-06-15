@@ -28,9 +28,9 @@ class DBGIF(Elaboratable):
         self.pinsout      = Signal(8);
         self.command      = Signal(4);
         self.canary       = Signal();
+        self.dev          = Signal(3);
 
     def elaborate(self, platform):
-
         m = Module()
         swin = Signal();
         swout = Signal();
@@ -70,10 +70,12 @@ class DBGIF(Elaboratable):
             i_pinsin     = self.pinsin,
             o_pinsout    = self.pinsout,
             o_canary     = self.canary,
+
             i_command = self.command,
             i_go      = self.go,
             o_done    = self.done,
             o_perr    = self.perr,
+            i_dev     = self.dev
             )
 
         i_clk = ClockSignal("sys2x")
@@ -82,9 +84,9 @@ class DBGIF(Elaboratable):
 
             self.dbgpins.tms_swdio.o_clk.eq(~i_clk),
             self.dbgpins.tms_swdio.i_clk.eq(~i_clk),
-
             self.dbgpins.swdwr.o_clk.eq(~i_clk),
+
             self.dbgpins.tdi.o_clk.eq(~self.dbgpins.tck_swclk.o),
-            self.dbgpins.tdo_swo.i_clk.eq(~self.dbgpins.tck_swclk.o)
+            self.dbgpins.tdo_swo.i_clk.eq(self.dbgpins.tck_swclk.o)
         ]
         return m

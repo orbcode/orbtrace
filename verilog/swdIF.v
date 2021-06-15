@@ -15,13 +15,13 @@ module swdIF (
                 input             clk,
 
 	// Downwards interface to the SWD pins
-                input             swdi,     // DIO pin from target
-                output            swdo,     // DIO pin to target
-                input             falling,  // Flag indicating falling edge to target
-                input             rising,   // Flag indicating rising edge to target
-                input             swclk_in, // Input swclock
-                output            swclk_out,// swclk out
-                output            swwr,     // Direction of DIO pin
+                input             swdi,       // DIO pin from target
+                output            swdo,       // DIO pin to target
+                input             falling,    // Flag indicating falling edge to target
+                input             rising,     // Flag indicating rising edge to target
+                input             swclk_in,   // Input swclock
+                output            swclk_out,  // swclk out
+                output            swwr,       // Direction of DIO pin
 
         // Configuration
                 input [1:0]       turnaround, // Clock ticks per turnaround

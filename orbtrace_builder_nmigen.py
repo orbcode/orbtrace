@@ -360,6 +360,8 @@ if __name__ == "__main__":
         platform.add_file("traceIF.v",f)
     with open('verilog/swdIF.v') as f:
         platform.add_file("swdIF.v",f)
+    with open('verilog/jtagIF.v') as f:
+        platform.add_file("jtagIF.v",f)
     with open('verilog/dbgIF.v') as f:
         platform.add_file("dbgIF.v",f)
     platform.build(OrbtraceDevice(), build_dir='build', do_program=True)
