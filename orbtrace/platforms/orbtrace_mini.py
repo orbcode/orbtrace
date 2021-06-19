@@ -6,6 +6,9 @@ from litex.soc.cores.bitbang import I2CMaster
 
 from ..crg_ecp5 import CRG
 
+from litespi.opcodes import SpiNorFlashOpCodes as Codes
+from ..flash_modules import S25FL064L
+
 from ..serial_led import SerialLedController
 
 # IOs ----------------------------------------------------------------------------------------------
@@ -144,6 +147,9 @@ class Platform(LatticePlatform):
         crg = CRG(self, sys_clk_freq)
         crg.add_usb()
         return crg
+
+    def get_flash_module(self):
+        return S25FL064L(Codes.READ_1_4_4)
 
     def add_leds(self, soc):
         soc.submodules.serial_led = SerialLedController(self.request('serial_led'), 5)

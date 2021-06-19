@@ -1,6 +1,7 @@
 from migen import *
 
 from litex.soc.integration.soc_core import SoCCore
+from litex.soc.integration.soc import SoCRegion
 
 from .trace import TraceCore
 
@@ -16,6 +17,9 @@ from usb_protocol.emitters.descriptors import cdc
 from litex.soc.interconnect import stream
 from litex.soc.interconnect.stream import Endpoint, Pipeline, AsyncFIFO, ClockDomainCrossing, Converter, Multiplexer, Demultiplexer
 from litex.soc.interconnect.axi import AXILiteInterface, AXILiteClockDomainCrossing
+
+from litespi.phy.generic import LiteSPIPHY
+from litespi import LiteSPI
 
 class USBAllocator:
     def __init__(self):
@@ -49,6 +53,9 @@ class OrbSoC(SoCCore):
 
         # CRG
         self.submodules.crg = platform.get_crg(sys_clk_freq)
+
+        # Flash
+        self.add_flash()
 
         # nMigen wrapper
         self.add_wrapper()
@@ -84,6 +91,39 @@ class OrbSoC(SoCCore):
 
         # USB
         self.finalize_usb()
+
+    def add_flash(self):
+        if not hasattr(self.platform, 'get_flash_module'):
+            return
+
+        flash = self.platform.get_flash_module()
+        #flash = S25FL064L(Codes.READ_1_4_4)
+
+        self.submodules.spiflash_phy = LiteSPIPHY(
+            pads = self.platform.request('spiflash4x'),
+            flash = flash,
+            device = self.platform.device,
+        )
+        self.add_csr('spiflash_phy')
+
+        self.submodules.spiflash_mmap = LiteSPI(
+            phy = self.spiflash_phy,
+            clk_freq = self.sys_clk_freq,
+            mmap_endianness = self.cpu.endianness,
+        )
+        self.add_csr('spiflash_mmap')
+
+        spiflash_region = SoCRegion(
+            origin = self.mem_map.get('spiflash', 0x08000000),
+            size = flash.total_size,
+            mode = 'r',
+        )
+
+        self.bus.add_slave(
+            name = 'spiflash',
+            slave = self.spiflash_mmap.bus,
+            region = spiflash_region,
+        )
 
     def add_target_power(self):
         pads = self.platform.request('target_power')
