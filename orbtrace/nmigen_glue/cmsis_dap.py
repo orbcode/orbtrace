@@ -70,5 +70,23 @@ class CMSIS_DAP(Module):
             clk = wrapper.from_nmigen(dbgpins.tms_swdio.o_clk),
         )
 
-        wrapper.connect(pads.reseten, dbgpins.reseten)
-        wrapper.connect(pads.nreset_sense, dbgpins.nreset_sense.i)
+        if hasattr(pads, 'nrst'):
+            nrst = TSTriple()
+            self.specials += nrst.get_tristate(pads.nrst)
+
+            self.comb += nrst.o.eq(0)
+            wrapper.connect(nrst.oe, dbgpins.reseten)
+            wrapper.connect(nrst.i, dbgpins.nreset_sense.i)
+
+            if hasattr(pads, 'nrst_dir'):
+                self.comb += pads.nrst_dir.eq(nrst.oe)
+
+        else:
+            wrapper.connect(pads.nrst_o_n, dbgpins.reseten)
+            wrapper.connect(pads.nrst_i, dbgpins.nreset_sense.i)
+
+        if hasattr(pads, 'jtck_dir'):
+            self.comb += pads.jtck_dir.eq(1)
+
+        if hasattr(pads, 'jtdi_dir'):
+            self.comb += pads.jtdi_dir.eq(1)

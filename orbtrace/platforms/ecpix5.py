@@ -18,8 +18,8 @@ class Platform(lambdaconcept_ecpix5.Platform):
                 Subsignal('jtdo', Pins('pmod7:3')),
                 Subsignal('jtdi', Pins('pmod6:6')),
 
-                Subsignal('reseten', Pins('pmod6:4')),
-                Subsignal('nreset_sense', Pins('pmod7:7')),
+                Subsignal('nrst_i', Pins('pmod7:7')),
+                Subsignal('nrst_o_n', Pins('pmod6:4')),
             ),
             ('trace', 0,
                 Subsignal('clk', Pins('pmod7:2')),
@@ -29,7 +29,9 @@ class Platform(lambdaconcept_ecpix5.Platform):
                 Subsignal('vtref_en_n', Pins('pmod6:2')),
                 Subsignal('vtpwr_en_n', Pins('pmod6:5')),
             ),
-            ('canary', 0, Pins('pmod4:0')),
+            ('gpio', 0,
+                Subsignal('data', Pins('pmod4:0')),
+            ),
             ('serial_led', 0, Pins('pmod5:0')),
         ])
 

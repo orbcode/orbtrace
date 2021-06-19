@@ -23,10 +23,14 @@ _io = [
     # Debug # FIXME: this is incomplete
     ('debug', 0,
         Subsignal('jtck',     Pins('B13')),
+        Subsignal('jtck_dir', Pins('B14')),
         Subsignal('jtms',     Pins('A14')),
         Subsignal('jtms_dir', Pins('A15')),
         Subsignal('jtdo',     Pins('B12')),
         Subsignal('jtdi',     Pins('A12')),
+        Subsignal('jtdi_dir', Pins('A13')),
+        Subsignal('nrst',     Pins('A11')),
+        Subsignal('nrst_dir', Pins('B11')),
         IOStandard('LVCMOS33')
     ),
 
@@ -37,9 +41,35 @@ _io = [
         IOStandard('LVCMOS33')
     ),
 
+    # GPIO
+    ('gpio', 0,
+        Subsignal('data', Pins('A2')),
+        Subsignal('dir',  Pins('B3')),
+    ),
+    ('gpio', 1,
+        Subsignal('data', Pins('A3')),
+        Subsignal('dir',  Pins('A4')),
+    ),
+    ('gpio', 2,
+        Subsignal('data', Pins('B4')),
+        Subsignal('dir',  Pins('B5')),
+    ),
+    ('gpio', 3,
+        Subsignal('data', Pins('A5')),
+        Subsignal('dir',  Pins('A6')),
+    ),
+    ('gpio', 4,
+        Subsignal('data', Pins('C7')),
+        Subsignal('dir',  Pins('B7')),
+    ),
+    ('gpio', 5,
+        Subsignal('data', Pins('A7')),
+        Subsignal('dir',  Pins('A8')),
+    ),
+
     # HyperRAM
     ('hyperram', 0,
-        Subsignal('rst',  Pins('M16')),
+        Subsignal('rst_n',  Pins('M16')),
         Subsignal('cs_n', Pins('M15')),
         Subsignal('clk',  Pins('N16')),
         Subsignal('rwds', Pins('R12')),

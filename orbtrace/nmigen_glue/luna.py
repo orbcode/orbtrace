@@ -15,9 +15,10 @@ class USBDevice(migen.Module):
         phy_reset_controller = PHYResetController()
         wrapper.m.submodules += phy_reset_controller
 
-        wrapper.m.d.comb += [
-            nmigen.ResetSignal('usb').eq(phy_reset_controller.phy_reset),
-        ]
+        if hasattr(pads, 'clk'):
+            wrapper.m.d.comb += [
+                nmigen.ResetSignal('usb').eq(phy_reset_controller.phy_reset),
+            ]
 
         ulpi_data = migen.TSTriple(8)
         ulpi_rst = migen.Signal()

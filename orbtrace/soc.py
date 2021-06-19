@@ -77,7 +77,7 @@ class OrbSoC(SoCCore):
         self.add_debug()
 
         # Target power
-        self.add_target_power()
+        #self.add_target_power()
 
         # USB
         self.finalize_usb()
@@ -197,8 +197,10 @@ class OrbSoC(SoCCore):
         is_v2 = Signal()
         self.comb += self.cmsis_dap.is_v2.eq(is_v2)
 
-        can = self.platform.request('canary')
-        self.comb += can.eq(self.cmsis_dap.can)
+        can = self.platform.request('gpio', 0)
+        self.comb += can.data.eq(self.cmsis_dap.can)
+        if hasattr(can, 'dir'):
+            self.comb += can.dir.eq(1)
 
         if with_v1 and with_v2:
             out_mux = Multiplexer(stream_desc, 2)
@@ -344,6 +346,7 @@ class OrbSoC(SoCCore):
         out_cdc = ClockDomainCrossing(out_ep.source.description, 'usb', 'sys')
 
         pipeline = Pipeline(out_ep, out_cdc, uart, in_cdc, in_ep)
+        pipeline.comb += in_ep.sink.last.eq(1)
 
         self.submodules += in_cdc, out_cdc, pipeline
 
