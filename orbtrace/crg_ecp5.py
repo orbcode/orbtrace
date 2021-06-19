@@ -3,14 +3,17 @@ from migen.genlib.resetsync import AsyncResetSynchronizer
 
 from litex.soc.cores.clock import ECP5PLL
 
-class CRG(Module):
+from litex.soc.interconnect.csr import AutoCSR, CSRStorage
+
+class CRG(Module, AutoCSR):
     def __init__(self, platform, sys_clk_freq):
         self.rst = Signal()
-        self.clock_domains.cd_init    = ClockDomain()
-        self.clock_domains.cd_por     = ClockDomain(reset_less=True)
-        self.clock_domains.cd_sys     = ClockDomain()
-        self.clock_domains.cd_sys2x   = ClockDomain()
-        self.clock_domains.cd_sys2x_i = ClockDomain(reset_less=True)
+        self.clock_domains.cd_por      = ClockDomain(reset_less=True)
+        self.clock_domains.cd_sys      = ClockDomain()
+        self.clock_domains.cd_sys2x    = ClockDomain()
+        self.clock_domains.cd_sys_90   = ClockDomain()
+        self.clock_domains.cd_sys2x_90 = ClockDomain()
+        #self.clock_domains.cd_sys2x_i = ClockDomain(reset_less=True)
 
         # # #
 
@@ -21,8 +24,6 @@ class CRG(Module):
         clk_in = platform.request(platform.default_clk_name)
         clk_in_freq = round(1e9 / platform.default_clk_period)
 
-        #rst_n  = platform.request("rst_n")
-
         # Power on reset
         por_count = Signal(16, reset=2**16-1)
         por_done  = Signal()
@@ -32,12 +33,14 @@ class CRG(Module):
 
         # PLL
         self.submodules.pll = pll = ECP5PLL()
-        #self.comb += pll.reset.eq(~por_done | ~rst_n | self.rst)
         self.comb += pll.reset.eq(~por_done | self.rst)
         pll.register_clkin(clk_in, clk_in_freq)
-        #pll.create_clkout(self.cd_sys2x_i, 2*sys_clk_freq)
-        pll.create_clkout(self.cd_sys2x, 2*sys_clk_freq)
-        pll.create_clkout(self.cd_init, 25e6)
+        pll.create_clkout(self.cd_sys2x, 2*sys_clk_freq, margin = 0)
+        pll.create_clkout(self.cd_sys2x_90, 2*sys_clk_freq, margin = 0, phase = 1)
+
+        self._slip_hr2x = CSRStorage()
+        self._slip_hr2x90 = CSRStorage()
+
         self.specials += [
             #Instance("ECLKSYNCB",
             #    i_ECLKI = self.cd_sys2x_i.clk,
@@ -45,12 +48,35 @@ class CRG(Module):
             #    o_ECLKO = self.cd_sys2x.clk),
             Instance("CLKDIVF",
                 p_DIV     = "2.0",
-                i_ALIGNWD = 0,
+                i_ALIGNWD = self._slip_hr2x.storage,
                 i_CLKI    = self.cd_sys2x.clk,
-                i_RST     = self.reset,
+                i_RST     = ~pll.locked,
                 o_CDIVX   = self.cd_sys.clk),
             AsyncResetSynchronizer(self.cd_sys,   ~pll.locked | self.reset | self.rst),
-            #AsyncResetSynchronizer(self.cd_sys2x, ~pll.locked | self.reset | self.rst),
+
+            Instance("CLKDIVF",
+                p_DIV     = "2.0",
+                i_ALIGNWD = self._slip_hr2x90.storage,
+                i_CLKI    = self.cd_sys2x_90.clk,
+                i_RST     = ~pll.locked,
+                o_CDIVX   = self.cd_sys_90.clk),
+            AsyncResetSynchronizer(self.cd_sys_90,   ~pll.locked | self.reset | self.rst),
+        
+        ]
+        #self.comb += self.cd_sys.clk.eq(self.cd_hr.clk)
+
+        pll.expose_dpa()
+
+        self._phase_sel = CSRStorage(2)
+        self._phase_dir = CSRStorage()
+        self._phase_step = CSRStorage()
+        self._phase_load = CSRStorage()
+
+        self.comb += [
+            self.pll.phase_sel.eq(self._phase_sel.storage),
+            self.pll.phase_dir.eq(self._phase_dir.storage),
+            self.pll.phase_step.eq(self._phase_step.storage),
+            self.pll.phase_load.eq(self._phase_load.storage),
         ]
 
     def add_usb(self):

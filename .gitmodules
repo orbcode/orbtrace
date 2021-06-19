@@ -28,3 +28,6 @@
 [submodule "deps/litespi"]
 	path = deps/litespi
 	url = https://github.com/litex-hub/litespi.git
+[submodule "deps/litehyperbus"]
+	path = deps/litehyperbus
+	url = https://github.com/litex-hub/litehyperbus.git

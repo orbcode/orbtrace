@@ -89,6 +89,10 @@ def main():
     )
 
     builder = Builder(soc, **builder_argdict(args))
+
+    builder.add_software_package('liblitehyperbus', str(Path('liblitehyperbus').absolute()))
+    builder.add_software_library('liblitehyperbus')
+
     builder.build(**trellis_argdict(args), run=args.build)
 
     if args.load:

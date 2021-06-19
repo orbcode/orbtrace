@@ -9,7 +9,11 @@ from ..crg_ecp5 import CRG
 from litespi.opcodes import SpiNorFlashOpCodes as Codes
 from ..flash_modules import S25FL064L
 
+from ..hyperram import HyperRAM
+
 from ..serial_led import SerialLedController
+
+from migen import ClockDomainsRenamer
 
 # IOs ----------------------------------------------------------------------------------------------
 
@@ -164,6 +168,22 @@ class Platform(LatticePlatform):
     def add_platform_specific(self, soc):
         # I2C
         soc.submodules.i2c = I2CMaster(self.request('i2c'))
+
+        # HyperRAM
+        cdr = ClockDomainsRenamer({
+            'hr':      'sys',
+            'hr2x':    'sys2x',
+            'hr_90':   'sys_90',
+            'hr2x_90': 'sys2x_90',
+        })
+
+        pads = self.request('hyperram')
+
+        soc.submodules.hyperram = cdr(HyperRAM(pads))
+        soc.add_csr('hyperram')
+        soc.register_mem('hyperram', soc.mem_map.get('hyperram', 0x20000000), soc.hyperram.bus, size = 0x800000)
+
+        soc.comb += pads.rst_n.eq(1)
 
     def create_programmer(self):
         return OpenFPGALoader('ecpix5')
