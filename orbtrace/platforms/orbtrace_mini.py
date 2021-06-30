@@ -2,6 +2,8 @@ from litex.build.generic_platform import *
 from litex.build.lattice import LatticePlatform
 from litex.build.openfpgaloader import OpenFPGALoader
 
+from litex.soc.cores.bitbang import I2CMaster
+
 from ..crg_ecp5 import CRG
 
 from ..serial_led import SerialLedController
@@ -151,6 +153,10 @@ class Platform(LatticePlatform):
         soc.led_trace  = soc.serial_led.leds[2]
         soc.led_vtref  = soc.serial_led.leds[3]
         soc.led_vtpwr  = soc.serial_led.leds[4]
+
+    def add_platform_specific(self, soc):
+        # I2C
+        soc.submodules.i2c = I2CMaster(self.request('i2c'))
 
     def create_programmer(self):
         return OpenFPGALoader('ecpix5')

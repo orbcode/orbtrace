@@ -79,6 +79,9 @@ class OrbSoC(SoCCore):
         # Target power
         #self.add_target_power()
 
+        # Platform specific
+        self.add_platform_specific()
+
         # USB
         self.finalize_usb()
 
@@ -415,3 +418,7 @@ class OrbSoC(SoCCore):
 
         self.wrapper.connect_domain('sys')
         self.wrapper.connect_domain('sys2x')
+
+    def add_platform_specific(self):
+        if hasattr(self.platform, 'add_platform_specific'):
+            self.platform.add_platform_specific(self)
