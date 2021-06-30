@@ -31,3 +31,6 @@
 [submodule "deps/litehyperbus"]
 	path = deps/litehyperbus
 	url = https://github.com/litex-hub/litehyperbus.git
+[submodule "deps/litescope"]
+	path = deps/litescope
+	url = git@github.com:enjoy-digital/litescope.git

@@ -31,6 +31,8 @@ from litex.soc.interconnect.axi import AXILiteInterface, AXILiteClockDomainCross
 from litespi.phy.generic import LiteSPIPHY
 from litespi import LiteSPI
 
+from litescope import LiteScopeAnalyzer
+
 class USBAllocator:
     def __init__(self):
         self._next_interface = 0
@@ -141,6 +143,16 @@ class OrbSoC(SoCCore):
 
             self.comb += getattr(self, n).eq(self.led_ctrl.outputs[i])
             setattr(self, n, self.led_ctrl.inputs[i])
+
+        # Litescope
+        #analyzer_groups = {
+        #    0: [
+        #        *self.hyperram.dbg,
+        #    ],
+        #}
+
+        #self.submodules.analyzer = LiteScopeAnalyzer(analyzer_groups, 256, csr_csv = 'analyzer.csv', clock_domain = 'sys')
+        #self.add_csr('analyzer')
 
     def add_flash(self):
         if not hasattr(self.platform, 'get_flash_module'):
