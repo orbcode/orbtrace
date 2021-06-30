@@ -9,8 +9,11 @@ from .nmigen_glue.wrapper import Wrapper
 from .nmigen_glue.luna import USBDevice, USBStreamOutEndpoint, USBStreamInEndpoint, USBMultibyteStreamInEndpoint
 from .nmigen_glue.usb_mem_bridge import MemRequestHandler
 from .nmigen_glue.cmsis_dap import CMSIS_DAP
+from .nmigen_glue.dfu import DFUHandler
 
-from usb_protocol.types      import USBTransferType
+from .flashwriter import FlashWriter
+
+from usb_protocol.types      import USBTransferType, USBRequestType, USBStandardRequests
 from usb_protocol.emitters   import DeviceDescriptorCollection
 from usb_protocol.emitters.descriptors import cdc
 
@@ -88,6 +91,9 @@ class OrbSoC(SoCCore):
 
         # Platform specific
         self.add_platform_specific()
+
+        # DFU
+        self.add_dfu()
 
         # USB
         self.finalize_usb()
@@ -406,6 +412,40 @@ class OrbSoC(SoCCore):
 
         self.bus.add_master('usb_bridge', axi_lite)
 
+    def add_dfu(self):
+        dfu_if = self.usb_alloc.interface()
+
+        # DFU interface descriptor.
+        with self.usb_conf_desc.InterfaceDescriptor() as i:
+            i.bInterfaceNumber   = dfu_if
+            i.bInterfaceClass    = 0xfe # Application specific class
+            i.bInterfaceSubclass = 0x01 # DFU
+            i.bInterfaceProtocol = 0x02 # DFU mode protocol
+
+            # DFU functional descriptor
+            i.add_subordinate_descriptor(b'\x09\x21\x0d\x00\x00\x00\x01\x00\x01')
+
+        dfu_handler = DFUHandler(dfu_if)
+
+        self.add_usb_control_handler(dfu_handler.handler) # FIXME: wrap
+
+        dfu_handler.wrap(self.wrapper)
+
+        self.submodules.flashwriter = FlashWriter()
+
+        port = self.spiflash_mmap.crossbar.get_port(self.flashwriter.cs, self.flashwriter.request)
+
+        self.comb += [
+            self.flashwriter.phy_source.connect(port.sink),
+            port.source.connect(self.flashwriter.phy_sink),
+        ]
+
+        cdc = ClockDomainCrossing(dfu_handler.source.description, 'usb', 'sys')
+
+        pipeline = Pipeline(dfu_handler, cdc, self.flashwriter)
+
+        self.submodules += cdc, pipeline
+
     def add_usb_control_handler(self, handler):
         if hasattr(self, 'usb_control_ep'):
             self.usb_control_ep.add_request_handler(handler)
@@ -446,8 +486,10 @@ class OrbSoC(SoCCore):
         # Delete this since it's too late to add more interfaces.
         del self.usb_conf_desc
 
+        blacklist = [lambda setup: (setup.type == USBRequestType.STANDARD) & (setup.request == USBStandardRequests.SET_INTERFACE)]
+
         # Add control endpoint handler.
-        self.usb_control_ep = self.usb.usb.add_standard_control_endpoint(self.usb_descriptors) # FIXME: wrap
+        self.usb_control_ep = self.usb.usb.add_standard_control_endpoint(self.usb_descriptors, blacklist = blacklist) # FIXME: wrap
         
         # Add additional request handlers.
         for handler in self.usb_control_handlers:
