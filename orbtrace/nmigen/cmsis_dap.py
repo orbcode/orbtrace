@@ -22,7 +22,7 @@ DAP_CAPABILITIES         = 0x03             # JTAG and SWD Debug
 DAP_TD_TIMER_FREQ        = 0x3B9ACA00       # 1uS resolution timer
 DAP_MAX_PACKET_COUNT     = 1                # 1 max packet count
 DAP_V1_MAX_PACKET_SIZE   = 64
-DAP_V2_MAX_PACKET_SIZE   = 512
+DAP_V2_MAX_PACKET_SIZE   = 511
 MAX_MSG_LEN              = DAP_V2_MAX_PACKET_SIZE
 
 # CMSIS-DAP Protocol Messages

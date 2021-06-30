@@ -9,7 +9,7 @@ from ..nmigen import cmsis_dap
 
 from litex.soc.interconnect.stream import Endpoint
 
-from litex.build.io import SDROutput, SDRTristate
+from litex.build.io import SDRInput, SDROutput, SDRTristate
 
 class CMSIS_DAP(Module):
     def __init__(self, pads, wrapper):
@@ -68,6 +68,18 @@ class CMSIS_DAP(Module):
             o = wrapper.from_nmigen(dbgpins.tms_swdio.o),
             oe = wrapper.from_nmigen(dbgpins.tms_swdio.oe),
             clk = wrapper.from_nmigen(dbgpins.tms_swdio.o_clk),
+        )
+
+        self.specials += SDROutput(
+            o = pads.jtdi,
+            i = wrapper.from_nmigen(dbgpins.tdi.o),
+            clk = wrapper.from_nmigen(dbgpins.tdi.o_clk),
+        )
+
+        self.specials += SDRInput(
+            i = pads.jtdo,
+            o = wrapper.from_nmigen(dbgpins.tdo_swo.i),
+            clk = wrapper.from_nmigen(dbgpins.tdo_swo.i_clk),
         )
 
         if hasattr(pads, 'nrst'):

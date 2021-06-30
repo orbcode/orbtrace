@@ -143,6 +143,7 @@ class OrbSoC(SoCCore):
         # Add verilog sources.
         self.platform.add_source('verilog/dbgIF.v')
         self.platform.add_source('verilog/swdIF.v')
+        self.platform.add_source('verilog/jtagIF.v')
 
         # CMSIS-DAP.
         self.submodules.cmsis_dap = CMSIS_DAP(self.platform.request('debug'), wrapper = self.wrapper)
@@ -188,7 +189,7 @@ class OrbSoC(SoCCore):
 
             out_ep_v1 = USBStreamOutEndpoint(
                 endpoint_number = out_ep_num,
-                max_packet_size = 64,
+                max_packet_size = 65, # Workaround for interrupt. TODO: Revert to 64 after this has been fixed in LUNA.
             )
             self.usb.add_endpoint(out_ep_v1)
 
