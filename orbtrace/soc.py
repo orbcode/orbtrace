@@ -296,6 +296,7 @@ class OrbSoC(SoCCore):
     def add_trace(self):
         # Trace core.
         self.submodules.trace = TraceCore(self.platform)
+        self.add_csr('trace')
 
         # LEDs
         if hasattr(self, 'led_trace'):

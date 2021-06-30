@@ -3,25 +3,48 @@ from migen.genlib.cdc import MultiReg
 
 from litex.soc.interconnect.stream import Endpoint, AsyncFIFO, Pipeline, CombinatorialActor
 from litex.build.io import DDRInput
+from litex.soc.interconnect.csr import AutoCSR, CSRStorage
 
 class TracePHY(Module):
     def __init__(self, pads):
         self.source = source = Endpoint([('data', 128)])
 
+        self.clk_delay = Record([('loadn', 1), ('move', 1), ('direction', 1)])
+
         traceclk = Signal()
         tracedata = Signal(4)
 
         self.comb += [
-            traceclk.eq(pads.clk),
+            #traceclk.eq(pads.clk),
             tracedata.eq(pads.data),
         ]
+
+        self.specials += Instance('DELAYF',
+            p_DEL_MODE = 'USER_DEFINED',
+            i_A = pads.clk,
+            o_Z = traceclk,
+            i_LOADN = self.clk_delay.loadn,
+            i_MOVE = self.clk_delay.move,
+            i_DIRECTION = self.clk_delay.direction,
+        )
 
         trace_a = Signal(4)
         trace_b = Signal(4)
 
         for i in range(4):
+            d = Signal()
+            #self.specials += Instance('DELAYF',
+            #    p_DEL_MODE = 'USER_DEFINED',
+            #    i_A = tracedata[i],
+            #    o_Z = d,
+            #    i_LOADN = self.clk_delay.loadn,
+            #    i_MOVE = self.clk_delay.move,
+            #    i_DIRECTION = self.clk_delay.direction,
+            #)
+
             self.specials += DDRInput(
                 clk = traceclk,
+                #i = d,
                 i = tracedata[i],
                 o1 = trace_a[i],
                 o2 = trace_b[i],
@@ -146,7 +169,7 @@ class Keepalive(Module):
             source.last.eq(1),
         ]
 
-class TraceCore(Module):
+class TraceCore(Module, AutoCSR):
     def __init__(self, platform):
         self.clock_domains.cd_trace = ClockDomain()
 
@@ -195,6 +218,17 @@ class TraceCore(Module):
         ]
 
         self.comb += self.loss.eq(loss_timeout != 0)
+
+        # CSRs for adjusting IO delays
+        self.loadn = CSRStorage()
+        self.move = CSRStorage()
+        self.direction = CSRStorage()
+
+        self.comb += [
+            phy.clk_delay.loadn.eq(self.loadn.storage),
+            phy.clk_delay.move.eq(self.move.storage),
+            phy.clk_delay.direction.eq(self.direction.storage),
+        ]
 
         # Add verilog sources.
         platform.add_source('verilog/traceIF.v') # TODO: make sure the path is correct
