@@ -6,6 +6,9 @@ from ..crg_ecp5 import CRG
 
 from ..serial_led import SerialLedController
 
+from litespi.opcodes import SpiNorFlashOpCodes as Codes
+from ..flash_modules import IS25LP256D
+
 class Platform(lambdaconcept_ecpix5.Platform):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -37,6 +40,9 @@ class Platform(lambdaconcept_ecpix5.Platform):
 
     def get_crg(self, sys_clk_freq):
         return CRG(self, sys_clk_freq)
+
+    def get_flash_module(self):
+        return IS25LP256D(Codes.READ_1_4_4)
 
     def add_leds(self, soc):
         soc.submodules.serial_led = SerialLedController(self.request('serial_led'), 5)
