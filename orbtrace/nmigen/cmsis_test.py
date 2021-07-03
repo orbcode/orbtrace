@@ -1,10 +1,12 @@
 import usb.backend.libusb1
+import hid
 
 VENDOR_ID = 0x1209
 PRODUCT_ID = 0x3443
-INTERFACE = 1
-IN_EP = (2|0x80)
+INTERFACE = 3
+IN_EP = (4|0x80)
 OUT_EP = 2
+IS_V1 = True
 
 def write_to_usb(dev, msg_str):
 
@@ -34,6 +36,17 @@ def read_from_usb(dev, rxlen, timeout):
         exit(-1)
 
     return data
+
+def write_to_hid(dev, msg_str):
+
+    print(">>>",end="")
+    for p in msg_str:
+        print(f' 0x{p:02x}', end="")
+
+    byte_str = b'\0' + bytes(msg_str) + b'\0' * max(64 - len(msg_str), 0)
+
+    device.write(byte_str)
+    print()
 
 def op_response( d, compareStr ):
     duff=False
@@ -114,25 +127,36 @@ tests2 = (
 )
 
 tests = (
+    ( "FW version",                 b"\x00\x04",                    b"\x00\x06\x32\x2e\x31\x2e\x30\x00" ),
     ( "DAP_SWJ_Clock",              b"\x11\x0f\x42\x40\x00",        b"\x11\x00"                 ),
     ( "DAP_JTAG_Sequence",          b"\x14\x07\x48\x00\x01\x00\x41\x00\x02\x00\x80\x00\x00\x00\x00\x00\x00\x00\x00\x42\x00\x01\x00",
                                     b"\x14\x00\x77\x04\xa0\x4b\x41\x90\x41\x06\x00\x00\x00\x00\x00\x00\x00" )
     )
 
 
-device = usb.core.find(idVendor=VENDOR_ID, idProduct=PRODUCT_ID)
+if (IS_V1):
+    device = hid.device()
+    device.open(VENDOR_ID, PRODUCT_ID)
+else:
+    device = usb.core.find(idVendor=VENDOR_ID, idProduct=PRODUCT_ID)
+    u=usb.util.claim_interface(device, INTERFACE)
 
 if device is None:
     raise ValueError('Device not found. Please ensure it is connected')
     sys.exit(1)
 
-# Claim interface 1 - this interface provides cmsis-dap v2 IN and OUT endpoints to write to and read from
-u=usb.util.claim_interface(device, INTERFACE)
 print("Interface claimed")
-#read_from_usb(device,1000,10)
 
 for desc,inseq,outsq in tests:
     print("==============",desc)
-    write_to_usb(device,bytes(inseq))
-    r=read_from_usb(device,len(outsq),1000)
+
+    if (IS_V1):
+        write_to_hid(device, inseq)
+        r=device.read(127)
+    else:
+        write_to_usb(device,bytes(inseq))
+        r=read_from_usb(device,len(outsq),1000)
+
     op_response(r,bytes(outsq))
+
+device.close()

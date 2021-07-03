@@ -17,7 +17,10 @@ from .dbgIF                  import DBGIF
 # =================================
 
 DAP_CONNECT_DEFAULT      = 1                # Default connect is SWD
-DAP_VERSION_STRING       = Cat(C(0x31,8),C(0x2e,8),C(0x30,8),C(0x30,8),C(0,8))
+DAP_PROTOCOL_STRING_LEN  = 5
+DAP_PROTOCOL_STRING      = Cat(C(DAP_PROTOCOL_STRING_LEN+1,8),C(ord('2'),8),C(ord('.'),8),C(ord('1'),8),C(ord('.'),8),C(ord('0'),8),C(0,8)) # Protocol version V2.1.0
+DAP_VERSION_STRING_LEN   = 4
+DAP_VERSION_STRING       = Cat(C(DAP_VERSION_STRING_LEN+1,8),C(0x31,8),C(0x2e,8),C(0x30,8),C(0x30,8),C(0,8))
 DAP_CAPABILITIES         = 0x03             # JTAG and SWD Debug
 DAP_TD_TIMER_FREQ        = 0x3B9ACA00       # 1uS resolution timer
 DAP_MAX_PACKET_COUNT     = 1                # 1 max packet count
@@ -83,7 +86,7 @@ CMD_JTAG_RESET           = 14
 
 # DAP_Info               : Done
 # DAP_Hoststatus         : Done (But not tied to h/w)
-# DAP_Connect            : Done + Tested for SWD, Not for JTAG
+# DAP_Connect            : Done
 # DAP_Disconnect         : Done
 # DAP_WriteABORT         : Done
 # DAP_Delay              : Done
@@ -209,11 +212,16 @@ class CMSIS_DAP(Elaboratable):
 
         with m.Switch(self.rxBlock.word_select(1,8)):
             # These cases are not implemented in this firmware
-            # Get the Vendor ID, Product ID, Serial Number, Target Device Vendor, Target Device Name
-            with m.Case(0x01, 0x02, 0x03, 0x05, 0x06):
+            # Get the Vendor ID, Product ID, Serial Number, Target Device Vendor, Target Device Name,
+            # Target Board Vendor, Target Board Name
+            with m.Case(0x01, 0x02, 0x03, 0x05, 0x06, 0x07, 0x08):
                 m.d.sync += [ self.txLen.eq(2), self.txBlock[8:16].eq(Cat(C(0,8))) ]
             with m.Case(0x04): # Get the CMSIS-DAP Firmware Version (string)
-                m.d.sync += [ self.txLen.eq(7), self.txBlock[8:56].eq(Cat(C(5,8),DAP_VERSION_STRING))]
+                m.d.sync += [ self.txLen.eq(3+DAP_PROTOCOL_STRING_LEN),
+                              self.txBlock.bit_select(8,8+(2+DAP_PROTOCOL_STRING_LEN)*8).eq(DAP_PROTOCOL_STRING) ]
+            with m.Case(0x09): # Get the Product Firmware version (string)
+                m.d.sync += [ self.txLen.eq(3+DAP_VERSION_STRING_LEN),
+                              self.txBlock.bit_select(8,8+(2+DAP_VERSION_STRING_LEN)*8).eq(DAP_VERSION_STRING)  ]
             with m.Case(0xF0): # Get information about the Capabilities (BYTE) of the Debug Unit
                 m.d.sync+=[self.txLen.eq(3), self.txBlock[8:24].eq(Cat(C(1,8),C(DAP_CAPABILITIES,8)))]
             with m.Case(0xF1): # Get the Test Domain Timer parameter information
@@ -864,6 +872,9 @@ class CMSIS_DAP(Elaboratable):
             # Setup to have control over tms, tdi and swwr (set for output), with clocks of 1 clock cycle
             self.dbgif.dwrite.eq(0),
 
+            # In case this is CMSIS-DAP v1, keep a tally of whats been sent so we can pad the packet
+            self.txedLen.eq(2),
+
             # Just for now take over reset as well
             self.dbgif.pinsin.eq(0b0001_0111_0001_0000),
             self.dbgif.command.eq(CMD_PINS_WRITE),
@@ -985,7 +996,8 @@ class CMSIS_DAP(Elaboratable):
                             self.streamIn.valid.eq(1),
                             self.pendingTx.eq(self.tdoBuild),
                             self.tdoCount.eq(0),
-                            self.tdoBuild.eq(0)
+                            self.tdoBuild.eq(0),
+                            self.txedLen.eq(self.txedLen+1)
                         ]
                 with m.Else():
                     with m.If(self.tckCycles==0):
@@ -1000,11 +1012,17 @@ class CMSIS_DAP(Elaboratable):
                 with m.If(self.streamIn.ready):
                     m.d.sync += [
                         self.streamIn.payload.eq(self.pendingTx),
-                        self.streamIn.last.eq(1),
-                        self.streamIn.valid.eq(1)
+                        self.streamIn.last.eq(self.isV2 | (self.txedLen==64)),
+                        self.streamIn.valid.eq(1),
+                        self.txb.eq(8)
                     ]
-                    m.next = 'IDLE'
 
+            # -------------
+            with m.Case(8): # Now decide how to terminate
+                    with m.If(self.isV2 | (self.txedLen==64)):
+                        m.next = 'IDLE'
+                    with m.Else():
+                        m.next = 'V1PACKETFILL'
 
     # -------------------------------------------------------------------------------------
 

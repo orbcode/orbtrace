@@ -1,9 +1,10 @@
 
 source [find interface/cmsis-dap.cfg]
 transport select jtag
+#transport select swd
 source [find target/stm32f4x.cfg]
 
-adapter speed 2000
+adapter speed 5000
 
 # use hardware reset, connect under reset
 #reset_config srst_only srst_nogate
