@@ -137,8 +137,8 @@ class OrbtraceDevice(Elaboratable):
             with c.InterfaceDescriptor() as i:
                 i._collection = descriptors
                 i.bInterfaceNumber = CMSIS_DAPV2_IF
-                i.iInterface = CMSIS_DAPV2_NAME
-                i.bInterfaceClass = 0xff
+                i.iInterface = "Dummy" #CMSIS_DAPV2_NAME
+                i.bInterfaceClass = 0x42 #ff
                 i.bInterfaceSubclass = 0
                 i.bInterfaceProtocol = 0
 
