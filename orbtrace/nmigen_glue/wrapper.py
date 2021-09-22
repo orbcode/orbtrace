@@ -21,6 +21,8 @@ class Wrapper(migen.Module):
     def connect_domain(self, name):
         n = 'sync' if name == 'sys' else name
 
+        setattr(self.m.domains, n, nmigen.ClockDomain(n))
+
         self.connect(migen.ClockSignal(name), nmigen.ClockSignal(n))
         self.connect(migen.ResetSignal(name), nmigen.ResetSignal(n))
 

@@ -46,7 +46,7 @@ class USBAllocator:
         return n
 
 class OrbSoC(SoCCore):
-    def __init__(self, platform, sys_clk_freq, **kwargs):
+    def __init__(self, platform, sys_clk_freq, with_debug, with_trace, with_dfu, usb_vid, usb_pid, **kwargs):
 
         # SoCCore
         SoCCore.__init__(self, platform, sys_clk_freq,
@@ -68,10 +68,14 @@ class OrbSoC(SoCCore):
             platform.add_leds(self)
         
         if hasattr(self, 'led_status'):
-            self.comb += self.led_status.g.eq(1)
+            if with_dfu == 'bootloader':
+                self.comb += self.led_status.r.eq(1)
+                self.comb += self.led_status.b.eq(1)
+            else:
+                self.comb += self.led_status.g.eq(1)
 
         # USB
-        self.add_usb()
+        self.add_usb(usb_vid, usb_pid)
 
         # USB UART
         if kwargs['uart_name'] == 'stream':
@@ -81,10 +85,12 @@ class OrbSoC(SoCCore):
         self.add_usb_bridge()
 
         # Trace
-        self.add_trace()
+        if with_trace:
+            self.add_trace()
 
         # Debug
-        self.add_debug()
+        if with_debug:
+            self.add_debug()
 
         # Target power
         #self.add_target_power()
@@ -93,7 +99,8 @@ class OrbSoC(SoCCore):
         self.add_platform_specific()
 
         # DFU
-        self.add_dfu()
+        if with_dfu:
+            self.add_dfu(with_dfu)
 
         # USB
         self.finalize_usb()
@@ -413,7 +420,7 @@ class OrbSoC(SoCCore):
 
         self.bus.add_master('usb_bridge', axi_lite)
 
-    def add_dfu(self):
+    def add_dfu(self, mode):
         dfu_if = self.usb_alloc.interface()
 
         # DFU interface descriptor.
@@ -421,7 +428,7 @@ class OrbSoC(SoCCore):
             i.bInterfaceNumber   = dfu_if
             i.bInterfaceClass    = 0xfe # Application specific class
             i.bInterfaceSubclass = 0x01 # DFU
-            i.bInterfaceProtocol = 0x02 # DFU mode protocol
+            i.bInterfaceProtocol = 0x01 if mode == 'runtime' else 0x02 # Mode
 
             # DFU functional descriptor
             i.add_subordinate_descriptor(b'\x09\x21\x0d\x00\x00\x00\x01\x00\x01')
@@ -454,7 +461,7 @@ class OrbSoC(SoCCore):
         else:
             self.usb_control_handlers.append(handler)
 
-    def add_usb(self):            
+    def add_usb(self, vid, pid):
         self.usb_alloc = USBAllocator()
 
         self.wrapper.connect_domain('usb')
@@ -464,11 +471,11 @@ class OrbSoC(SoCCore):
         self.usb_descriptors = DeviceDescriptorCollection()
 
         with self.usb_descriptors.DeviceDescriptor() as d:
-            d.idVendor           = 0x1209
-            d.idProduct          = 0x3443  # Allocated from pid.codes
+            d.idVendor           = vid
+            d.idProduct          = pid
 
             d.iManufacturer      = "Orbcode"
-            d.iProduct           = "Orbtrace"
+            d.iProduct           = "Orbtrace Bootloader" if pid == 0x3442 else "Orbtrace Test" if pid == 0x0001 else "Orbtrace"
             d.iSerialNumber      = "N/A"
 
             d.bNumConfigurations = 1

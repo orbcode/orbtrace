@@ -5,6 +5,8 @@ import deps
 import os
 import argparse
 
+from pathlib import Path
+
 from litex.soc.integration.soc_core import soc_core_args, soc_core_argdict
 from litex.soc.integration.builder import Builder, builder_args, builder_argdict
 from litex.build.lattice.trellis import trellis_args, trellis_argdict
@@ -15,9 +17,11 @@ def main():
     parser = argparse.ArgumentParser(description = "Orbtrace", add_help = False)
 
     parser_actions = parser.add_argument_group('Actions')
+    parser_orbtrace = parser.add_argument_group('Orbtrace options')
     parser_platform = parser.add_argument_group('Platform options')
 
     parser_platform.add_argument("--platform", choices = ['ecpix5', 'orbtrace_mini'], required = True, help = 'Select platform')
+    parser_platform.add_argument("--profile", default = 'default', help = 'Select profile (argument defaults)')
 
     args, _ = parser.parse_known_args()
 
@@ -42,6 +46,17 @@ def main():
     soc_core_args(parser.add_argument_group('SoC core options'))
     trellis_args(parser.add_argument_group('Trellis options'))
 
+    parser_orbtrace.add_argument('--with-debug', action = 'store_true', help = 'Enable debug functionality')
+    parser_orbtrace.add_argument('--without-debug', action = 'store_false', dest = 'with_debug')
+    parser_orbtrace.add_argument('--with-trace', action = 'store_true', help = 'Enable trace functionality')
+    parser_orbtrace.add_argument('--without-trace', action = 'store_false', dest = 'with_trace')
+    parser_orbtrace.add_argument('--with-dfu', choices = ['bootloader', 'runtime'], help = 'Enable DFU support')
+
+    parser_orbtrace.add_argument('--usb-vid', type = lambda x: int(x, 16), default = 0x1209, help = 'USB Vendor ID')
+    parser_orbtrace.add_argument('--usb-pid', type = lambda x: int(x, 16), default = 0x3443, help = 'USB Product ID')
+
+    parser.set_defaults(**Platform.get_profile(args.profile))
+
     args = parser.parse_args()
 
     platform = Platform(
@@ -49,9 +64,20 @@ def main():
         #toolchain = 'trellis',
     )
 
+    if not args.output_dir:
+        args.output_dir = Path('build') / platform.name
+
+    if not args.csr_csv:
+        args.csr_csv = Path(args.output_dir) / 'gateware' / 'csr.csv'
+
     soc = OrbSoC(
         platform = platform,
         sys_clk_freq  = int(float(args.sys_clk_freq)),
+        with_debug = args.with_debug,
+        with_trace = args.with_trace,
+        with_dfu = args.with_dfu,
+        usb_vid = args.usb_vid,
+        usb_pid = args.usb_pid,
         **soc_core_argdict(args)
     )
 

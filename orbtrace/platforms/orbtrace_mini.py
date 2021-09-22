@@ -176,3 +176,37 @@ class Platform(LatticePlatform):
     @classmethod
     def add_arguments(cls, parser):
         parser.add_argument('--device', choices = ['25F', '45F'], default = '25F', help = 'ECP5 device (default: 25F)')
+
+    @classmethod
+    def get_profile(cls, profile):
+        return {
+            'default': {
+                'uart_name': 'stream',
+                'with_debug': True,
+                'with_trace': True,
+                #'with_dfu': 'runtime',
+                'ecppack_bootaddr': '0x0',
+                #'ecppack_spimode': 'qspi',
+                'ecppack_compress': True,
+            },
+            'dfu': {
+                'uart_name': 'stream',
+                'with_debug': False,
+                'with_trace': False,
+                'with_dfu': 'bootloader',
+                'usb_pid': 0x3442,
+                'output_dir': 'build/orbtrace_mini_dfu',
+                'ecppack_bootaddr': '0x100000',
+                #'ecppack_spimode': 'qspi',
+                'ecppack_compress': True,
+            },
+            'test': {
+                'uart_name': 'stream',
+                'with_debug': False,
+                'with_trace': False,
+                'with_dfu': 'bootloader',
+                'usb_pid': 0x0001,
+                'output_dir': 'build/orbtrace_mini_test',
+                'ecppack_compress': True,
+            },
+        }[profile]

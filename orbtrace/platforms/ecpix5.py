@@ -79,3 +79,9 @@ class Platform(lambdaconcept_ecpix5.Platform):
     @classmethod
     def add_arguments(cls, parser):
         parser.add_argument('--device', choices = ['45F', '85F'], default = '85F', help = 'ECP5 device (default: 85F)')
+
+    @classmethod
+    def get_profile(cls, profile):
+        return {
+            'default': {},
+        }[profile]
