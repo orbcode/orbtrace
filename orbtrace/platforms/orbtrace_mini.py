@@ -20,9 +20,10 @@ _io = [
     # Leds
     ('serial_led', 0, Pins('N12'), IOStandard('LVCMOS33')),
 
+    ('programn', 0, Pins('P11'), IOStandard('LVCMOS33')),
+    ('btn', 0, Pins('P12'), IOStandard('LVCMOS33')),
+
     # TODO:
-    # programn
-    # btn
     # power
 
     # Debug # FIXME: this is incomplete
@@ -196,6 +197,7 @@ class Platform(LatticePlatform):
                 'with_dfu': 'bootloader',
                 'usb_pid': 0x3442,
                 'output_dir': 'build/orbtrace_mini_dfu',
+                'bootloader_auto_reset': True,
                 'ecppack_bootaddr': '0x100000',
                 #'ecppack_spimode': 'qspi',
                 'ecppack_compress': True,

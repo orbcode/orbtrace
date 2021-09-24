@@ -46,7 +46,7 @@ class USBAllocator:
         return n
 
 class OrbSoC(SoCCore):
-    def __init__(self, platform, sys_clk_freq, with_debug, with_trace, with_dfu, usb_vid, usb_pid, **kwargs):
+    def __init__(self, platform, sys_clk_freq, with_debug, with_trace, with_dfu, usb_vid, usb_pid, bootloader_auto_reset, **kwargs):
 
         # SoCCore
         SoCCore.__init__(self, platform, sys_clk_freq,
@@ -73,6 +73,10 @@ class OrbSoC(SoCCore):
                 self.comb += self.led_status.b.eq(1)
             else:
                 self.comb += self.led_status.g.eq(1)
+
+        # Bootloader auto reset
+        if bootloader_auto_reset:
+            self.add_auto_reset()
 
         # USB
         self.add_usb(usb_vid, usb_pid)
@@ -104,6 +108,20 @@ class OrbSoC(SoCCore):
 
         # USB
         self.finalize_usb()
+
+    def add_auto_reset(self):
+        programn = self.platform.request('programn')
+        btn = self.platform.request('btn')
+
+        reset_set = Signal()
+        reset = Signal()
+
+        self.sync += If(~reset_set,
+            reset_set.eq(1),
+            reset.eq(btn), # Button is active low, reset if button is not pressed
+        )
+
+        self.comb += programn.eq(~reset)
 
     def add_flash(self):
         if not hasattr(self.platform, 'get_flash_module'):

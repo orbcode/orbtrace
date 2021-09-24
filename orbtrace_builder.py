@@ -55,6 +55,8 @@ def main():
     parser_orbtrace.add_argument('--usb-vid', type = lambda x: int(x, 16), default = 0x1209, help = 'USB Vendor ID')
     parser_orbtrace.add_argument('--usb-pid', type = lambda x: int(x, 16), default = 0x3443, help = 'USB Product ID')
 
+    parser_orbtrace.add_argument('--bootloader-auto-reset', action = 'store_true', help = 'Enable auto-reset to jump from bootloader to app')
+
     parser.set_defaults(**Platform.get_profile(args.profile))
 
     args = parser.parse_args()
@@ -78,6 +80,7 @@ def main():
         with_dfu = args.with_dfu,
         usb_vid = args.usb_vid,
         usb_pid = args.usb_pid,
+        bootloader_auto_reset = args.bootloader_auto_reset,
         **soc_core_argdict(args)
     )
 
