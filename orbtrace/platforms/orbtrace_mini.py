@@ -207,6 +207,7 @@ class Platform(LatticePlatform):
                 'uart_name': 'stream',
                 'with_debug': False,
                 'with_trace': False,
+                'with_test_io': True,
                 'with_dfu': 'bootloader',
                 'usb_pid': 0x0001,
                 'led_default': 0xe, # status=cyan

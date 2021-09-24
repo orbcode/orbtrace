@@ -1,3 +1,4 @@
+from orbtrace.test_io import TestIO
 from migen import *
 
 from litex.soc.integration.soc_core import SoCCore
@@ -48,7 +49,7 @@ class USBAllocator:
         return n
 
 class OrbSoC(SoCCore):
-    def __init__(self, platform, sys_clk_freq, with_debug, with_trace, with_dfu, usb_vid, usb_pid, led_default, bootloader_auto_reset, **kwargs):
+    def __init__(self, platform, sys_clk_freq, with_debug, with_trace, with_dfu, with_test_io, usb_vid, usb_pid, led_default, bootloader_auto_reset, **kwargs):
 
         # SoCCore
         SoCCore.__init__(self, platform, sys_clk_freq,
@@ -99,6 +100,10 @@ class OrbSoC(SoCCore):
         # DFU
         if with_dfu:
             self.add_dfu(with_dfu)
+
+        # Test IO
+        if with_test_io:
+            self.add_test_io()
 
         # USB
         self.finalize_usb()
@@ -362,6 +367,41 @@ class OrbSoC(SoCCore):
 
         pipeline = Pipeline(self.trace, cdc, ep)
         self.submodules += cdc, pipeline
+
+    def add_test_io(self):
+        debug = self.platform.request('debug')
+        trace = self.platform.request('trace')
+        gpio = [self.platform.request('gpio') for i in range(6)]
+        btn = self.platform.request('btn')
+
+        signals = [
+            # Debug
+            (debug.jtms, debug.jtms_dir),
+            (debug.jtck, debug.jtck_dir),
+            (debug.jtdo,),
+            (debug.jtdi, debug.jtdi_dir),
+            (debug.nrst, debug.nrst_dir),
+
+            # Trace
+            (trace.clk,),
+            (trace.data[0],),
+            (trace.data[1],),
+            (trace.data[2],),
+            (trace.data[3],),
+
+            # GPIO
+            (gpio[0].data, gpio[0].dir),
+            (gpio[1].data, gpio[1].dir),
+            (gpio[2].data, gpio[2].dir),
+            (gpio[3].data, gpio[3].dir),
+            (gpio[4].data, gpio[4].dir),
+            (gpio[5].data, gpio[5].dir),
+
+            # Button
+            (btn,),
+        ]
+
+        self.submodules.test_io = TestIO(signals)
 
     def add_usb_uart(self, uart):
         comm_if = self.usb_alloc.interface()

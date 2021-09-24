@@ -51,6 +51,7 @@ def main():
     parser_orbtrace.add_argument('--with-trace', action = 'store_true', help = 'Enable trace functionality')
     parser_orbtrace.add_argument('--without-trace', action = 'store_false', dest = 'with_trace')
     parser_orbtrace.add_argument('--with-dfu', choices = ['bootloader', 'runtime'], help = 'Enable DFU support')
+    parser_orbtrace.add_argument('--with-test-io', action = 'store_true', help = 'Enable test IO')
 
     parser_orbtrace.add_argument('--usb-vid', type = lambda x: int(x, 16), default = 0x1209, help = 'USB Vendor ID')
     parser_orbtrace.add_argument('--usb-pid', type = lambda x: int(x, 16), default = 0x3443, help = 'USB Product ID')
@@ -79,6 +80,7 @@ def main():
         with_debug = args.with_debug,
         with_trace = args.with_trace,
         with_dfu = args.with_dfu,
+        with_test_io = args.with_test_io,
         usb_vid = args.usb_vid,
         usb_pid = args.usb_pid,
         led_default = args.led_default,
