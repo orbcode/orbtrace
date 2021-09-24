@@ -196,6 +196,7 @@ class Platform(LatticePlatform):
                 'with_trace': False,
                 'with_dfu': 'bootloader',
                 'usb_pid': 0x3442,
+                'led_default': 0xd, # status=purple
                 'output_dir': 'build/orbtrace_mini_dfu',
                 'bootloader_auto_reset': True,
                 'ecppack_bootaddr': '0x100000',
@@ -208,6 +209,7 @@ class Platform(LatticePlatform):
                 'with_trace': False,
                 'with_dfu': 'bootloader',
                 'usb_pid': 0x0001,
+                'led_default': 0xe, # status=cyan
                 'output_dir': 'build/orbtrace_mini_test',
                 'ecppack_compress': True,
             },

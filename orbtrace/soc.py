@@ -13,6 +13,8 @@ from .nmigen_glue.dfu import DFUHandler
 
 from .flashwriter import FlashWriter
 
+from .led_ctrl import LEDCtrl
+
 from usb_protocol.types      import USBTransferType, USBRequestType, USBStandardRequests
 from usb_protocol.emitters   import DeviceDescriptorCollection
 from usb_protocol.emitters.descriptors import cdc
@@ -46,7 +48,7 @@ class USBAllocator:
         return n
 
 class OrbSoC(SoCCore):
-    def __init__(self, platform, sys_clk_freq, with_debug, with_trace, with_dfu, usb_vid, usb_pid, bootloader_auto_reset, **kwargs):
+    def __init__(self, platform, sys_clk_freq, with_debug, with_trace, with_dfu, usb_vid, usb_pid, led_default, bootloader_auto_reset, **kwargs):
 
         # SoCCore
         SoCCore.__init__(self, platform, sys_clk_freq,
@@ -64,15 +66,7 @@ class OrbSoC(SoCCore):
         self.add_wrapper()
 
         # LEDs
-        if hasattr(platform, 'add_leds'):
-            platform.add_leds(self)
-
-        if hasattr(self, 'led_status'):
-            if with_dfu == 'bootloader':
-                self.comb += self.led_status.r.eq(1)
-                self.comb += self.led_status.b.eq(1)
-            else:
-                self.comb += self.led_status.g.eq(1)
+        self.add_leds(led_default)
 
         # Bootloader auto reset
         if bootloader_auto_reset:
@@ -122,6 +116,19 @@ class OrbSoC(SoCCore):
         )
 
         self.comb += programn.eq(~reset)
+
+    def add_leds(self, default):
+        if hasattr(self.platform, 'add_leds'):
+            self.platform.add_leds(self)
+
+        self.submodules.led_ctrl = LEDCtrl(5, default)
+
+        for i, n in enumerate(['led_status', 'led_debug', 'led_trace', 'led_vtref', 'led_vtpwr']):
+            if not hasattr(self, n):
+                continue
+
+            self.comb += getattr(self, n).eq(self.led_ctrl.outputs[i])
+            setattr(self, n, self.led_ctrl.inputs[i])
 
     def add_flash(self):
         if not hasattr(self.platform, 'get_flash_module'):
