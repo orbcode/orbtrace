@@ -1,3 +1,4 @@
+from orbtrace.usb_serialnumber import USBSerialNumberHandler
 from orbtrace.test_io import TestIO
 from migen import *
 
@@ -12,11 +13,14 @@ from .nmigen_glue.usb_mem_bridge import MemRequestHandler
 from .nmigen_glue.cmsis_dap import CMSIS_DAP
 from .nmigen_glue.dfu import DFUHandler
 
+from .usb_serialnumber import USBSerialNumberHandler
+
+from .flash_uid import FlashUID
 from .flashwriter import FlashWriter
 
 from .led_ctrl import LEDCtrl
 
-from usb_protocol.types      import USBTransferType, USBRequestType, USBStandardRequests
+from usb_protocol.types      import USBTransferType, USBRequestType, USBStandardRequests, USBRequestRecipient, DescriptorTypes
 from usb_protocol.emitters   import DeviceDescriptorCollection
 from usb_protocol.emitters.descriptors import cdc
 
@@ -75,6 +79,9 @@ class OrbSoC(SoCCore):
 
         # USB
         self.add_usb(usb_vid, usb_pid)
+
+        # USB serial number
+        self.add_usb_serialnumber()
 
         # USB UART
         if kwargs['uart_name'] == 'stream':
@@ -167,6 +174,15 @@ class OrbSoC(SoCCore):
             slave = self.spiflash_mmap.bus,
             region = spiflash_region,
         )
+
+        self.submodules.flash_uid = FlashUID()
+
+        port = self.spiflash_mmap.crossbar.get_port(self.flash_uid.cs, self.flash_uid.request)
+
+        self.comb += [
+            self.flash_uid.phy_source.connect(port.sink),
+            port.source.connect(self.flash_uid.phy_sink),
+        ]
 
     def add_target_power(self):
         pads = self.platform.request('target_power')
@@ -519,6 +535,19 @@ class OrbSoC(SoCCore):
 
         self.submodules += cdc, pipeline
 
+    def add_usb_serialnumber(self):
+        handler = USBSerialNumberHandler(self.usb_serial_idx, len(self.flash_uid.uid))
+
+        self.add_usb_control_handler(handler)
+
+        self.comb += self.wrapper.from_nmigen(handler.serial).eq(self.flash_uid.uid)
+
+        self.usb_blacklist.append(lambda setup: \
+            (setup.type == USBRequestType.STANDARD) & \
+            (setup.recipient == USBRequestRecipient.DEVICE) & \
+            (setup.request == USBStandardRequests.GET_DESCRIPTOR) & \
+            (setup.value == (DescriptorTypes.STRING << 8) | self.usb_serial_idx))
+
     def add_usb_control_handler(self, handler):
         if hasattr(self, 'usb_control_ep'):
             self.usb_control_ep.add_request_handler(handler)
@@ -545,12 +574,16 @@ class OrbSoC(SoCCore):
 
             d.bNumConfigurations = 1
 
+        # Store iSerialNumber so handler can be overridden.
+        self.usb_serial_idx = d.fields['iSerialNumber']
+
         self.usb_conf_emitter = self.usb_descriptors.ConfigurationDescriptor()
 
         # Enter ConfigurationDescriptor context manager to avoid having to wrap everything in a with-statement.
         self.usb_conf_desc = self.usb_conf_emitter.__enter__()
 
         self.usb_control_handlers = []
+        self.usb_blacklist = []
 
     def finalize_usb(self):
         # Exit ConfigurationDescriptor context manager to emit configuration descriptor.
@@ -559,10 +592,11 @@ class OrbSoC(SoCCore):
         # Delete this since it's too late to add more interfaces.
         del self.usb_conf_desc
 
-        blacklist = [lambda setup: (setup.type == USBRequestType.STANDARD) & (setup.request == USBStandardRequests.SET_INTERFACE)]
+        # Blacklist default set interface handler.
+        self.usb_blacklist.append(lambda setup: (setup.type == USBRequestType.STANDARD) & (setup.request == USBStandardRequests.SET_INTERFACE))
 
         # Add control endpoint handler.
-        self.usb_control_ep = self.usb.usb.add_standard_control_endpoint(self.usb_descriptors, blacklist = blacklist) # FIXME: wrap
+        self.usb_control_ep = self.usb.usb.add_standard_control_endpoint(self.usb_descriptors, blacklist = self.usb_blacklist) # FIXME: wrap
 
         # Add additional request handlers.
         for handler in self.usb_control_handlers:
