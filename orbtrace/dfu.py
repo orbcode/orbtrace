@@ -7,7 +7,7 @@ from luna.gateware.stream.generator import StreamSerializer
 from luna.gateware.memory import TransactionalizedFIFO
 
 class DFUHandler(USBRequestHandler):
-    def __init__(self, if_num):
+    def __init__(self, if_num, areas):
         super().__init__()
 
         self.source = Record([
@@ -23,11 +23,16 @@ class DFUHandler(USBRequestHandler):
 
         self.addr = Signal(24)
 
+        self.areas = Array(areas)
+        self.area_sel = Signal(range(len(self.areas)))
+
         self.new_request = Signal()
         self.request_done = Signal()
         self.state = Signal(8, reset = 2)
 
     def handle_set_interface(self, m):
+        m.d.usb += self.area_sel.eq(self.interface.setup.value)
+
         with m.If(self.interface.status_requested):
             m.d.comb += self.send_zlp()
             m.d.comb += self.request_done.eq(1)
@@ -97,7 +102,7 @@ class DFUHandler(USBRequestHandler):
             # Starting a new DNLOAD cycle?
             with m.If(self.state == 2):
                 m.d.usb += [
-                    self.addr.eq(0), # TODO: Pick addr based on selected interface.
+                    self.addr.eq(self.areas[self.area_sel]),
                     self.source.first.eq(1),
                 ]
 

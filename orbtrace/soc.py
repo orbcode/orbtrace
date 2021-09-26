@@ -504,17 +504,37 @@ class OrbSoC(SoCCore):
     def add_dfu(self, mode):
         dfu_if = self.usb_alloc.interface()
 
-        # DFU interface descriptor.
-        with self.usb_conf_desc.InterfaceDescriptor() as i:
-            i.bInterfaceNumber   = dfu_if
-            i.bInterfaceClass    = 0xfe # Application specific class
-            i.bInterfaceSubclass = 0x01 # DFU
-            i.bInterfaceProtocol = 0x01 if mode == 'runtime' else 0x02 # Mode
+        areas = [
+            (0x100000, 'Application gateware'),
+            (0x400000, 'Application software'),
+            (0x000000, 'Bootloader gateware'),
+        ]
 
-            # DFU functional descriptor
-            i.add_subordinate_descriptor(b'\x09\x21\x0d\x00\x00\x00\x01\x00\x01')
+        if mode == 'runtime':
+            with self.usb_conf_desc.InterfaceDescriptor() as i:
+                i.bInterfaceNumber   = dfu_if
+                i.bInterfaceClass    = 0xfe # Application specific class
+                i.bInterfaceSubclass = 0x01 # DFU
+                i.bInterfaceProtocol = 0x01 # Runtime mode
 
-        dfu_handler = DFUHandler(dfu_if)
+                # DFU functional descriptor
+                i.add_subordinate_descriptor(b'\x09\x21\x0d\x00\x00\x00\x01\x00\x01')
+
+        else:
+            for area_idx, (area_offset, area_name) in enumerate(areas):
+                with self.usb_conf_desc.InterfaceDescriptor() as i:
+                    i.bInterfaceNumber   = dfu_if
+                    i.bInterfaceClass    = 0xfe # Application specific class
+                    i.bInterfaceSubclass = 0x01 # DFU
+                    i.bInterfaceProtocol = 0x02 # DFU Mode
+
+                    i.bAlternateSetting = area_idx
+                    i.iInterface = area_name
+
+                    # DFU functional descriptor
+                    i.add_subordinate_descriptor(b'\x09\x21\x0d\x00\x00\x00\x01\x00\x01')
+
+        dfu_handler = DFUHandler(dfu_if, [offset for offset, name in areas])
 
         self.add_usb_control_handler(dfu_handler.handler) # FIXME: wrap
 

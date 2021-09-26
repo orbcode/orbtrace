@@ -5,10 +5,10 @@ from litex.soc.interconnect.stream import Endpoint
 from .. import dfu
 
 class DFUHandler:
-    def __init__(self, if_num):
+    def __init__(self, if_num, areas):
         self.source = Endpoint([('data', 8), ('addr', 24)])
 
-        self.handler = dfu.DFUHandler(if_num)
+        self.handler = dfu.DFUHandler(if_num, areas)
     
     def wrap(self, wrapper):
         wrapper.connect(self.source.data, self.handler.source.data)
