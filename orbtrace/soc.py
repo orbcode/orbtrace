@@ -509,8 +509,8 @@ class OrbSoC(SoCCore):
         dfu_if = self.usb_alloc.interface()
 
         areas = [
-            (0x100000, 'Application gateware'),
             (0x400000, 'Application software'),
+            (0x100000, 'Application gateware'),
             (0x000000, 'Bootloader gateware'),
         ]
 
