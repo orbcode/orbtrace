@@ -37,8 +37,8 @@ class DBGIF(Elaboratable):
 
         m.submodules.dbgif = Instance(
             "dbgIF",
-	    i_rst = ResetSignal("sync"),
-            i_clk = ClockSignal("sys2x"),
+            i_rst = ResetSignal("debug"),
+            i_clk = ClockSignal("debug"),
 
             # Gross control - power etc
             i_vsen      = 1,
@@ -78,15 +78,15 @@ class DBGIF(Elaboratable):
             i_dev     = self.dev
             )
 
-        i_clk = ClockSignal("sys2x")
+        i_clk = ClockSignal("debug")
         m.d.comb += [
             self.dbgpins.tms_swdio.oe.eq(self.dbgpins.swdwr.o),
 
-            self.dbgpins.tms_swdio.o_clk.eq(~i_clk),
-            self.dbgpins.tms_swdio.i_clk.eq(~i_clk),
-            self.dbgpins.swdwr.o_clk.eq(~i_clk),
+            self.dbgpins.tms_swdio.o_clk.eq(i_clk),
+            self.dbgpins.tms_swdio.i_clk.eq(i_clk),
+            self.dbgpins.swdwr.o_clk.eq(i_clk),
 
-            self.dbgpins.tdi.o_clk.eq(~self.dbgpins.tck_swclk.o),
-            self.dbgpins.tdo_swo.i_clk.eq(self.dbgpins.tck_swclk.o)
+            self.dbgpins.tdi.o_clk.eq(i_clk),
+            self.dbgpins.tdo_swo.i_clk.eq(i_clk),
         ]
         return m

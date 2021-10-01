@@ -79,6 +79,15 @@ class CRG(Module, AutoCSR):
             self.pll.phase_load.eq(self._phase_load.storage),
         ]
 
+        # PLL2
+        self.submodules.pll2 = pll2 = ECP5PLL()
+        self.comb += pll2.reset.eq(~por_done | self.rst)
+        pll2.register_clkin(clk_in, clk_in_freq)
+
     def add_usb(self):
         self.clock_domains.cd_usb = ClockDomain()
         self.pll.create_clkout(self.cd_usb, 60e6)
+
+    def add_debug(self):
+        self.clock_domains.cd_debug = ClockDomain()
+        self.pll2.create_clkout(self.cd_debug, 120e6)

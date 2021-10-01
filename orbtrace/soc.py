@@ -193,6 +193,10 @@ class OrbSoC(SoCCore):
         ]
 
     def add_debug(self, with_v1 = True, with_v2 = True):
+        # PHY clock.
+        self.crg.add_debug()
+        self.wrapper.connect_domain('debug')
+
         # Add verilog sources.
         self.platform.add_source('verilog/dbgIF.v')
         self.platform.add_source('verilog/swdIF.v')
@@ -626,7 +630,6 @@ class OrbSoC(SoCCore):
         self.submodules.wrapper = Wrapper(self.platform)
 
         self.wrapper.connect_domain('sys')
-        self.wrapper.connect_domain('sys2x')
 
     def add_platform_specific(self):
         if hasattr(self.platform, 'add_platform_specific'):
