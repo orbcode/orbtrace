@@ -6,6 +6,7 @@ from litex.soc.integration.soc_core import SoCCore
 from litex.soc.integration.soc import SoCRegion
 
 from .trace import TraceCore
+from .trace.usb_handler import TraceUSBHandler
 
 from .nmigen_glue.wrapper import Wrapper
 from .nmigen_glue.luna import USBDevice, USBStreamOutEndpoint, USBStreamInEndpoint, USBMultibyteStreamInEndpoint
@@ -374,6 +375,13 @@ class OrbSoC(SoCCore):
             with i.EndpointDescriptor() as e:
                 e.bEndpointAddress = 0x80 | ep_num
                 e.wMaxPacketSize   = 512
+
+        # Control handler.
+        handler = TraceUSBHandler(if_num)
+
+        self.add_usb_control_handler(handler)
+
+        self.comb += self.trace.width.eq(self.wrapper.from_nmigen(handler.width))
 
         # Endpoint handler.
         ep = USBMultibyteStreamInEndpoint(

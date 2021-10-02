@@ -29,9 +29,7 @@ class TracePHY(Module):
 
         self.comb += ClockSignal().eq(traceclk)
 
-        width = Signal(2)
-
-        self.comb += width.eq(3)
+        self.width = Signal(2)
 
         edgeOutput = Signal()
 
@@ -53,7 +51,7 @@ class TracePHY(Module):
             i_traceDina = trace_a,
             i_traceDinb = trace_b,
             i_traceClkin = traceclk,
-            i_width = width,
+            i_width = self.width,
             o_edgeOutput = edgeOutput,
 
             o_FrAvail = fravail,
@@ -154,6 +152,8 @@ class TraceCore(Module):
 
         self.source = source = Endpoint([('data', 128)])
 
+        self.width = Signal(2)
+
         # Main pipeline.
         phy = ClockDomainsRenamer('trace')(TracePHY(pads))
 
@@ -166,6 +166,9 @@ class TraceCore(Module):
         self.submodules += Pipeline(phy, fifo, byteswap, injector, source)
 
         self.submodules += phy, fifo, byteswap, injector
+
+        # Config.
+        self.comb += phy.width.eq(self.width)
 
         # Monitoring/keepalive.
         monitor = Monitor(phy.source)
