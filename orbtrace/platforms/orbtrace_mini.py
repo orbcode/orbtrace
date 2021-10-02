@@ -27,10 +27,7 @@ _io = [
     ('programn', 0, Pins('P11'), IOStandard('LVCMOS33')),
     ('btn', 0, Pins('P12'), IOStandard('LVCMOS33')),
 
-    # TODO:
-    # power
-
-    # Debug # FIXME: this is incomplete
+    # Debug
     ('debug', 0,
         Subsignal('jtck',     Pins('B13')),
         Subsignal('jtck_dir', Pins('B14')),
@@ -48,6 +45,17 @@ _io = [
     ('trace', 0,
         Subsignal('clk',  Pins('C8')),
         Subsignal('data', Pins('A10 B9 A9 B8')),
+        IOStandard('LVCMOS33')
+    ),
+
+    # Target power
+    ('target_power', 0,
+        Subsignal('vtref_en',    Pins('C6')),
+        Subsignal('vtref_sel',   Pins('D6')),
+        Subsignal('vtref_fault', Pins('C5')),
+        Subsignal('vtpwr_en',    Pins('D4')),
+        Subsignal('vtpwr_sel',   Pins('C4')),
+        Subsignal('vtpwr_fault', Pins('D5')),
         IOStandard('LVCMOS33')
     ),
 
@@ -205,6 +213,7 @@ class Platform(LatticePlatform):
                 'uart_name': 'stream',
                 'with_debug': True,
                 'with_trace': True,
+                'with_target_power': True,
                 #'with_dfu': 'runtime',
                 'ecppack_bootaddr': '0x0',
                 #'ecppack_spimode': 'qspi',

@@ -8,6 +8,8 @@ from litex.soc.integration.soc import SoCRegion
 from .trace import TraceCore
 from .trace.usb_handler import TraceUSBHandler
 
+from .power.usb_handler import PowerUSBHandler
+
 from .nmigen_glue.wrapper import Wrapper
 from .nmigen_glue.luna import USBDevice, USBStreamOutEndpoint, USBStreamInEndpoint, USBMultibyteStreamInEndpoint
 from .nmigen_glue.usb_mem_bridge import MemRequestHandler
@@ -54,7 +56,7 @@ class USBAllocator:
         return n
 
 class OrbSoC(SoCCore):
-    def __init__(self, platform, sys_clk_freq, with_debug, with_trace, with_dfu, with_test_io, usb_vid, usb_pid, led_default, bootloader_auto_reset, **kwargs):
+    def __init__(self, platform, sys_clk_freq, with_debug, with_trace, with_target_power, with_dfu, with_test_io, usb_vid, usb_pid, led_default, bootloader_auto_reset, **kwargs):
 
         # SoCCore
         SoCCore.__init__(self, platform, sys_clk_freq,
@@ -100,7 +102,8 @@ class OrbSoC(SoCCore):
             self.add_debug()
 
         # Target power
-        #self.add_target_power()
+        if with_target_power:
+            self.add_target_power()
 
         # Platform specific
         self.add_platform_specific()
@@ -188,9 +191,34 @@ class OrbSoC(SoCCore):
     def add_target_power(self):
         pads = self.platform.request('target_power')
 
+        # USB interface.
+        if_num = self.usb_alloc.interface()
+
+        # USB descriptors.
+        with self.usb_conf_desc.InterfaceDescriptor() as i:
+            i.bInterfaceNumber   = if_num
+            i.bInterfaceClass    = 0xff
+            i.bInterfaceSubclass = 0x50
+            i.bInterfaceProtocol = 0x00
+
+            i.iInterface = 'Target power'
+
+        # USB handler.
+        handler = PowerUSBHandler(if_num)
+
+        self.add_usb_control_handler(handler)
+
         self.comb += [
-            pads.vtref_en_n.eq(1),
-            pads.vtpwr_en_n.eq(0),
+            pads.vtref_en.eq(self.wrapper.from_nmigen(handler.vtref_en)),
+            pads.vtref_sel.eq(self.wrapper.from_nmigen(handler.vtref_sel)),
+            pads.vtpwr_en.eq(self.wrapper.from_nmigen(handler.vtpwr_en)),
+            pads.vtpwr_sel.eq(self.wrapper.from_nmigen(handler.vtpwr_sel)),
+
+            self.led_vtref.b.eq(pads.vtref_en),
+            self.led_vtref.g.eq(pads.vtref_en & pads.vtref_sel),
+
+            self.led_vtpwr.b.eq(pads.vtpwr_en),
+            self.led_vtpwr.r.eq(pads.vtpwr_en & pads.vtpwr_sel),
         ]
 
     def add_debug(self, with_v1 = True, with_v2 = True):

@@ -50,6 +50,8 @@ def main():
     parser_orbtrace.add_argument('--without-debug', action = 'store_false', dest = 'with_debug')
     parser_orbtrace.add_argument('--with-trace', action = 'store_true', help = 'Enable trace functionality')
     parser_orbtrace.add_argument('--without-trace', action = 'store_false', dest = 'with_trace')
+    parser_orbtrace.add_argument('--with-target-power', action = 'store_true', help = 'Enable target power control')
+    parser_orbtrace.add_argument('--without-target-power', action = 'store_false', dest = 'with_target_power')
     parser_orbtrace.add_argument('--with-dfu', choices = ['bootloader', 'runtime'], help = 'Enable DFU support')
     parser_orbtrace.add_argument('--with-test-io', action = 'store_true', help = 'Enable test IO')
 
@@ -79,6 +81,7 @@ def main():
         sys_clk_freq  = int(float(args.sys_clk_freq)),
         with_debug = args.with_debug,
         with_trace = args.with_trace,
+        with_target_power = args.with_target_power,
         with_dfu = args.with_dfu,
         with_test_io = args.with_test_io,
         usb_vid = args.usb_vid,
