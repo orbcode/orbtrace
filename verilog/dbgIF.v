@@ -75,7 +75,7 @@
 //                    interface pins with CMD_SET_SWJ etc.)
 //
 
-module dbgIF #(parameter CLK_FREQ=150000000, parameter DEFAULT_SWCLK=1000000, parameter DEFAULT_RST_TIMEOUT_USEC=300) (
+module dbgIF #(parameter CLK_FREQ=120000000, parameter DEFAULT_SWCLK=1000000, parameter DEFAULT_RST_TIMEOUT_USEC=300) (
 		input             rst,
                 input             clk,
 
