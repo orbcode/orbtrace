@@ -816,12 +816,13 @@ class CMSIS_DAP(Elaboratable):
 
         with m.Switch(self.txb):
             with m.Case(0): # Prepare transfer ------------------------------------------------------------------------
+                m.d.sync += [
+                    self.transferCount.eq(self.tfrram.adr),
+                    self.tfrram.adr.eq(0),
+                ]
+
                 with m.If(self.tfrram.adr!=0):
-                    m.d.sync += [
-                        self.transferCount.eq(self.tfrram.adr),
-                        self.tfrram.adr.eq(0),
-                        self.txb.eq(1)
-                        ]
+                    m.d.sync += self.txb.eq(1)
                 with m.Else():
                     m.d.sync += self.txb.eq(7)
 
