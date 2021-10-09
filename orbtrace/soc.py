@@ -385,7 +385,16 @@ class OrbSoC(SoCCore):
 
         # LEDs
         if hasattr(self, 'led_trace'):
-            self.comb += self.led_trace.r.eq(self.trace.loss)
+            self.comb += [
+                If(self.trace.led_overrun,
+                    self.led_trace.r.eq(1),
+                ).Elif(self.trace.led_data,
+                    self.led_trace.g.eq(1),
+                ).Elif(self.trace.led_clk,
+                    self.led_trace.r.eq(1),
+                    self.led_trace.g.eq(1),
+                ),
+            ]
 
         # USB interface.
         if_num = self.usb_alloc.interface()

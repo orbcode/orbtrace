@@ -91,10 +91,12 @@ class Monitor(Module):
         # Exported signals.
         self.total = Signal(32)
         self.lost = Signal(16)
+        self.clk = Signal(2)
 
         # Internal signals (pre CDC).
         total = Signal(32)
         lost = Signal(16)
+        clk = Signal(2)
 
         self.sync.trace += [
             If(stream.valid,
@@ -103,12 +105,33 @@ class Monitor(Module):
             If(stream.valid & ~stream.ready,
                 lost.eq(lost + 1),
             ),
+            clk.eq(clk + 1),
         ]
 
         self.specials += [
             MultiReg(total, self.total),
             MultiReg(lost, self.lost),
+            MultiReg(clk, self.clk),
         ]
+
+class Indicator(Module):
+    def __init__(self, data, hold):
+        self.out = Signal()
+
+        last_data = Signal(len(data))
+        hold_cnt = Signal(max = hold)
+
+        self.sync += [
+            last_data.eq(data),
+            If(hold_cnt != 0,
+                hold_cnt.eq(hold_cnt - 1),
+            ),
+            If(last_data != data,
+                hold_cnt.eq(hold - 1),
+            ),
+        ]
+
+        self.comb += self.out.eq(hold_cnt != 0)
 
 class Keepalive(Module):
     def __init__(self):
@@ -183,21 +206,20 @@ class TraceCore(Module):
 
         self.submodules += monitor, keepalive
 
-        loss_timeout = Signal(max = 7500000)
-        self.loss = Signal()
-        last_lost_frames = Signal(16)
+        # Indicators
+        self.led_overrun = Signal()
+        self.led_data = Signal()
+        self.led_clk = Signal()
 
-        self.sync += [
-            last_lost_frames.eq(monitor.lost),
-            If(loss_timeout != 0,
-                loss_timeout.eq(loss_timeout - 1),
-            ),
-            If(last_lost_frames != monitor.lost,
-                loss_timeout.eq(7500000 - 1),
-            ),
+        self.submodules.overrun_indicator = Indicator(monitor.lost, 7500000)
+        self.submodules.data_indicator = Indicator(monitor.total, 7500000)
+        self.submodules.clk_indicator = Indicator(monitor.clk, 7500000)
+
+        self.comb += [
+            self.led_overrun.eq(self.overrun_indicator.out),
+            self.led_data.eq(self.data_indicator.out),
+            self.led_clk.eq(self.clk_indicator.out),
         ]
-
-        self.comb += self.loss.eq(loss_timeout != 0)
 
         # Add verilog sources.
         platform.add_source('verilog/traceIF.v') # TODO: make sure the path is correct
