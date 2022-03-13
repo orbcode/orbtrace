@@ -15,4 +15,30 @@ On the TRACE side primary the gateware exports a USB-Bulk endpoint carrying 1-4 
 
 Full documentation for Orbtrace is available via Read The Docs at https://orbtrace.readthedocs.io/en/latest/.
 
+To build;
+
+`./orbtrace_builder.py --platform orbtrace_mini --build`
+
+(You might also want `--profile dfu` and `--profile test` if you're working on those elements.)
+
+To burn application firmware using boot button hold down the boot button while powring on the device (Status goes purple), then;
+
+`dfu-util -d 1209:3443 -D build/orbtrace_mini/gateware/orbtrace_mini.bit`
+
+and power cycle.
+
+in addition...To ensure everything is up to date;
+
+```
+rm -rf build
+git pull --recurse-submodules
+```
+
+To burn bootloader and application using openFPGALoader;
+
+`penFPGALoader -c ft232 -f -o 0x0 build/orbtrace_mini_dfu/gateware/orbtrace_mini.bit and openFPGALoader -c ft232 -f -o 0x100000 build/orbtrace_mini/gateware/orbtrace_mini.bit`
+
+Thanks and stuff
+----------------
+
 Orbtrace is built on top of a whole slew of other projects, and it simply wouldn't be possible without the effort of literally hundreds of very smart people across the net. Thanks are due to all of them for contributing to the common good that is Open Source. You are more than welcome to use the material here, but whatever the words of the various licences attached to these files, on your honour please respect the Open Source ethos, pay it forward, and go out of your way to be nice to others.
