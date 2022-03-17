@@ -234,6 +234,17 @@ class OrbSoC(SoCCore):
         # CMSIS-DAP.
         self.submodules.cmsis_dap = CMSIS_DAP(self.platform.request('debug'), wrapper = self.wrapper)
 
+        # LEDs
+        if hasattr(self, 'led_debug'):
+            self.comb += [
+                If(self.cmsis_dap.running,
+                    self.led_debug.g.eq(1),
+                ).Elif(self.cmsis_dap.connected,
+                    self.led_debug.r.eq(1),
+                    self.led_debug.g.eq(1),
+                ),
+            ]
+
         if with_v1:
             # USB interface.
             if_num = self.usb_alloc.interface()

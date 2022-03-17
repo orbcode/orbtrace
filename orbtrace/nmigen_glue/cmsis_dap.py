@@ -17,6 +17,8 @@ class CMSIS_DAP(Module):
         self.sink = Endpoint([('data', 8)])
         self.is_v2 = Signal()
         self.can = Signal()
+        self.connected = Signal()
+        self.running = Signal()
 
         dbgpins = nmigen.Record([
             ('tck_swclk', [('o', 1, DIR_FANOUT)]),
@@ -53,6 +55,9 @@ class CMSIS_DAP(Module):
         wrapper.connect(self.is_v2, is_v2)
 
         wrapper.connect(self.can, dap.can)
+
+        wrapper.connect(self.connected, dap.connected)
+        wrapper.connect(self.running, dap.running)
 
         wrapper.connect(pads.jtck, dbgpins.tck_swclk.o)
 
