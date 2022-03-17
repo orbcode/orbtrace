@@ -12,13 +12,13 @@ This is a non-core platform. It originates from the luna ECPIX-5 platform with e
 
 """
 
-from nmigen import *
-from nmigen.build import *
-from nmigen.vendor.lattice_ecp5 import LatticeECP5Platform
+from amaranth import *
+from amaranth.build import *
+from amaranth.vendor.lattice_ecp5 import LatticeECP5Platform
 
-from nmigen_boards.resources import *
-from nmigen_boards.ecpix5 import ECPIX545Platform as _ECPIX545Platform
-from nmigen_boards.ecpix5 import ECPIX585Platform as _ECPIX585Platform
+from amaranth_boards.resources import *
+from amaranth_boards.ecpix5 import ECPIX545Platform as _ECPIX545Platform
+from amaranth_boards.ecpix5 import ECPIX585Platform as _ECPIX585Platform
 
 from luna.gateware.platform.core  import LUNAPlatform
 

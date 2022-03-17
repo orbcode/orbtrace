@@ -1,4 +1,4 @@
-from nmigen import *
+from amaranth import *
 from usb_protocol.types import USBRequestType, USBStandardRequests, USBRequestRecipient
 
 from luna.gateware.usb.usb2.request import USBRequestHandler

@@ -6,13 +6,13 @@ import deps
 import os
 import itertools
 
-from nmigen                  import *
-from nmigen.build            import ResourceError
-from nmigen.lib.fifo         import AsyncFIFO,AsyncFIFOBuffered
-from nmigen.hdl              import ClockSignal
+from amaranth                  import *
+from amaranth.build            import ResourceError
+from amaranth.lib.fifo         import AsyncFIFO,AsyncFIFOBuffered
+from amaranth.hdl              import ClockSignal
 
-from nmigen.build.dsl        import Pins
-from nmigen.hdl.xfrm         import DomainRenamer, ClockDomain
+from amaranth.build.dsl        import Pins
+from amaranth.hdl.xfrm         import DomainRenamer, ClockDomain
 from usb_protocol.emitters   import DeviceDescriptorCollection
 
 
@@ -20,10 +20,10 @@ from luna.usb2               import USBDevice, USBMultibyteStreamInEndpoint, USB
 from luna.gateware.stream.arbiter import StreamArbiter, StreamMultiplexer, StreamInterface
 from usb_protocol.types      import USBTransferType
 
-from orbtrace.nmigen.orbtrace_platform_ecp5  import orbtrace_ECPIX5_85_Platform
-from orbtrace.nmigen.traceIF                 import TRACE_TO_USB
+from orbtrace.amaranth.orbtrace_platform_ecp5  import orbtrace_ECPIX5_85_Platform
+from orbtrace.amaranth.traceIF                 import TRACE_TO_USB
 
-from orbtrace.nmigen.cmsis_dap               import CMSIS_DAP
+from orbtrace.amaranth.cmsis_dap               import CMSIS_DAP
 
 # USB Endpoint configuration
 

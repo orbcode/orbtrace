@@ -1,6 +1,6 @@
 from .wrapper import Wrapper
 
-import nmigen
+import amaranth
 import migen
 
 import luna.usb2
@@ -17,7 +17,7 @@ class USBDevice(migen.Module):
 
         if hasattr(pads, 'clk'):
             wrapper.m.d.comb += [
-                nmigen.ResetSignal('usb').eq(phy_reset_controller.phy_reset),
+                amaranth.ResetSignal('usb').eq(phy_reset_controller.phy_reset),
             ]
 
         ulpi_data = migen.TSTriple(8)
@@ -33,8 +33,8 @@ class USBDevice(migen.Module):
         if hasattr(pads, 'clk'):
             self.clock_domains.usb = migen.ClockDomain()
 
-        from nmigen.hdl.rec import DIR_FANIN, DIR_FANOUT, DIR_NONE
-        ulpi = nmigen.Record(
+        from amaranth.hdl.rec import DIR_FANIN, DIR_FANOUT, DIR_NONE
+        ulpi = amaranth.Record(
             [
                 ('data', [('i', 8, DIR_FANIN), ('o', 8, DIR_FANOUT), ('oe', 1, DIR_FANOUT)]),
                 ('clk', [('i', 1, DIR_FANIN)] if hasattr(pads, 'clk') else [('o', 1, DIR_FANOUT)]),

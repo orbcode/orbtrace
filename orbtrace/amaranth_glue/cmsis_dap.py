@@ -1,11 +1,11 @@
 from migen import *
 
-import nmigen
-from nmigen.hdl.rec import DIR_FANIN, DIR_FANOUT, DIR_NONE
+import amaranth
+from amaranth.hdl.rec import DIR_FANIN, DIR_FANOUT, DIR_NONE
 
 from luna.gateware.stream import StreamInterface
 
-from ..nmigen import cmsis_dap
+from ..amaranth import cmsis_dap
 
 from litex.soc.interconnect.stream import Endpoint
 
@@ -20,7 +20,7 @@ class CMSIS_DAP(Module):
         self.connected = Signal()
         self.running = Signal()
 
-        dbgpins = nmigen.Record([
+        dbgpins = amaranth.Record([
             ('tck_swclk', [('o', 1, DIR_FANOUT)]),
             ('nvdriveen', 1, DIR_FANOUT),
             ('swdwr', [('o', 1, DIR_FANOUT), ('o_clk', 1, DIR_FANOUT)]),
@@ -35,7 +35,7 @@ class CMSIS_DAP(Module):
         stream_in = StreamInterface()
         stream_out = StreamInterface()
 
-        is_v2 = nmigen.Signal()
+        is_v2 = amaranth.Signal()
 
         dap = cmsis_dap.CMSIS_DAP(stream_in, stream_out, dbgpins, is_v2)
         wrapper.m.submodules += dap
@@ -63,28 +63,28 @@ class CMSIS_DAP(Module):
 
         self.specials += SDROutput(
             o = pads.jtms_dir,
-            i = wrapper.from_nmigen(dbgpins.swdwr.o),
-            clk = wrapper.from_nmigen(dbgpins.swdwr.o_clk),
+            i = wrapper.from_amaranth(dbgpins.swdwr.o),
+            clk = wrapper.from_amaranth(dbgpins.swdwr.o_clk),
         )
 
         self.specials += SDRTristate(
             io = pads.jtms,
-            i = wrapper.from_nmigen(dbgpins.tms_swdio.i),
-            o = wrapper.from_nmigen(dbgpins.tms_swdio.o),
-            oe = wrapper.from_nmigen(dbgpins.tms_swdio.oe),
-            clk = wrapper.from_nmigen(dbgpins.tms_swdio.o_clk),
+            i = wrapper.from_amaranth(dbgpins.tms_swdio.i),
+            o = wrapper.from_amaranth(dbgpins.tms_swdio.o),
+            oe = wrapper.from_amaranth(dbgpins.tms_swdio.oe),
+            clk = wrapper.from_amaranth(dbgpins.tms_swdio.o_clk),
         )
 
         self.specials += SDROutput(
             o = pads.jtdi,
-            i = wrapper.from_nmigen(dbgpins.tdi.o),
-            clk = wrapper.from_nmigen(dbgpins.tdi.o_clk),
+            i = wrapper.from_amaranth(dbgpins.tdi.o),
+            clk = wrapper.from_amaranth(dbgpins.tdi.o_clk),
         )
 
         self.specials += SDRInput(
             i = pads.jtdo,
-            o = wrapper.from_nmigen(dbgpins.tdo_swo.i),
-            clk = wrapper.from_nmigen(dbgpins.tdo_swo.i_clk),
+            o = wrapper.from_amaranth(dbgpins.tdo_swo.i),
+            clk = wrapper.from_amaranth(dbgpins.tdo_swo.i_clk),
         )
 
         if hasattr(pads, 'nrst'):

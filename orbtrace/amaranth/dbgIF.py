@@ -1,10 +1,10 @@
 #SPDX-License-Identifier: BSD-3-Clause
 
-from nmigen                  import *
-from nmigen.hdl.xfrm         import DomainRenamer
-from nmigen.lib.fifo         import SyncFIFOBuffered
+from amaranth                  import *
+from amaranth.hdl.xfrm         import DomainRenamer
+from amaranth.lib.fifo         import SyncFIFOBuffered
 
-# Glue to connect nmigen world (cmsis_dap) to verilog world
+# Glue to connect amaranth world (cmsis_dap) to verilog world
 # =========================================================
 
 class DBGIF(Elaboratable):

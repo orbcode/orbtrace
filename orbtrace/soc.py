@@ -10,11 +10,11 @@ from .trace.usb_handler import TraceUSBHandler
 
 from .power.usb_handler import PowerUSBHandler
 
-from .nmigen_glue.wrapper import Wrapper
-from .nmigen_glue.luna import USBDevice, USBStreamOutEndpoint, USBStreamInEndpoint, USBMultibyteStreamInEndpoint
-from .nmigen_glue.usb_mem_bridge import MemRequestHandler
-from .nmigen_glue.cmsis_dap import CMSIS_DAP
-from .nmigen_glue.dfu import DFUHandler
+from .amaranth_glue.wrapper import Wrapper
+from .amaranth_glue.luna import USBDevice, USBStreamOutEndpoint, USBStreamInEndpoint, USBMultibyteStreamInEndpoint
+from .amaranth_glue.usb_mem_bridge import MemRequestHandler
+from .amaranth_glue.cmsis_dap import CMSIS_DAP
+from .amaranth_glue.dfu import DFUHandler
 
 from .usb_serialnumber import USBSerialNumberHandler
 
@@ -70,7 +70,7 @@ class OrbSoC(SoCCore):
         # Flash
         self.add_flash()
 
-        # nMigen wrapper
+        # Amaranth wrapper
         self.add_wrapper()
 
         # LEDs
@@ -209,10 +209,10 @@ class OrbSoC(SoCCore):
         self.add_usb_control_handler(handler)
 
         self.comb += [
-            pads.vtref_en.eq(self.wrapper.from_nmigen(handler.vtref_en)),
-            pads.vtref_sel.eq(self.wrapper.from_nmigen(handler.vtref_sel)),
-            pads.vtpwr_en.eq(self.wrapper.from_nmigen(handler.vtpwr_en)),
-            pads.vtpwr_sel.eq(self.wrapper.from_nmigen(handler.vtpwr_sel)),
+            pads.vtref_en.eq(self.wrapper.from_amaranth(handler.vtref_en)),
+            pads.vtref_sel.eq(self.wrapper.from_amaranth(handler.vtref_sel)),
+            pads.vtpwr_en.eq(self.wrapper.from_amaranth(handler.vtpwr_en)),
+            pads.vtpwr_sel.eq(self.wrapper.from_amaranth(handler.vtpwr_sel)),
 
             self.led_vtref.b.eq(pads.vtref_en),
             self.led_vtref.g.eq(pads.vtref_en & pads.vtref_sel),
@@ -429,7 +429,7 @@ class OrbSoC(SoCCore):
 
         self.add_usb_control_handler(handler)
 
-        self.comb += self.trace.width.eq(self.wrapper.from_nmigen(handler.width))
+        self.comb += self.trace.width.eq(self.wrapper.from_amaranth(handler.width))
 
         # Endpoint handler.
         ep = USBMultibyteStreamInEndpoint(
@@ -620,7 +620,7 @@ class OrbSoC(SoCCore):
 
         self.add_usb_control_handler(handler)
 
-        self.comb += self.wrapper.from_nmigen(handler.serial).eq(self.flash_uid.uid)
+        self.comb += self.wrapper.from_amaranth(handler.serial).eq(self.flash_uid.uid)
 
         self.usb_blacklist.append(lambda setup: \
             (setup.type == USBRequestType.STANDARD) & \

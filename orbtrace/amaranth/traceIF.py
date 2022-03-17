@@ -1,6 +1,6 @@
-from nmigen                  import *
-from nmigen.hdl.xfrm         import DomainRenamer
-from nmigen.lib.fifo         import SyncFIFOBuffered
+from amaranth                  import *
+from amaranth.hdl.xfrm         import DomainRenamer
+from amaranth.lib.fifo         import SyncFIFOBuffered
 
 class TRACE(Elaboratable):
     def __init__(self, tracepins, width, phaseinv, fravail, frame):

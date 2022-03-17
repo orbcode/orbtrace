@@ -1,4 +1,4 @@
-import nmigen
+import amaranth
 
 from litex.soc.interconnect.stream import Endpoint
 

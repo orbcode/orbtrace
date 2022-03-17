@@ -1,4 +1,4 @@
-from nmigen import Elaboratable, Module, Cat, Array, Signal
+from amaranth import Elaboratable, Module, Cat, Array, Signal
 from usb_protocol.types import USBRequestType
 
 from luna.gateware.usb.usb2.request import USBRequestHandler

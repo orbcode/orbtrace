@@ -1,4 +1,4 @@
-import nmigen
+import amaranth
 
 from litex.soc.interconnect.axi import AXILiteInterface
 
@@ -6,7 +6,7 @@ from .. import usb_mem_bridge
 
 class MemRequestHandler:
     def __init__(self):
-        self._axi_lite = nmigen.Record(
+        self._axi_lite = amaranth.Record(
             [
                 ('aw', [
                     ('addr', 32),
