@@ -5,12 +5,11 @@ from amaranth.hdl.xfrm         import DomainRenamer
 from amaranth.lib.fifo         import SyncFIFOBuffered
 
 # Glue to connect amaranth world (cmsis_dap) to verilog world
-# =========================================================
+# ===========================================================
 
 class DBGIF(Elaboratable):
     def __init__(self, dbgpins):
         self.dbgpins      = dbgpins;
-        self.countdown    = Signal(23);
         self.turnaround   = Signal(4, reset=1);
         self.addr32       = Signal(2);
         self.rnw          = Signal();
@@ -19,15 +18,11 @@ class DBGIF(Elaboratable):
         self.dread        = Signal(32);
         self.perr         = Signal();
         self.go           = Signal();
-        self.postedMode   = Signal();
         self.done         = Signal();
-        self.again        = Signal();
-        self.ignoreData   = Signal();
         self.ack          = Signal(3);
         self.pinsin       = Signal(16);
         self.pinsout      = Signal(8);
-        self.command      = Signal(4);
-        self.canary       = Signal();
+        self.command      = Signal(5);
         self.dev          = Signal(3);
 
     def elaborate(self, platform):
@@ -40,10 +35,6 @@ class DBGIF(Elaboratable):
             i_rst = ResetSignal("debug"),
             i_clk = ClockSignal("debug"),
 
-            # Gross control - power etc
-            i_vsen      = 1,
-            i_vdrive    = 0,
-
             # Downwards interface to the pins
             i_swdi            = self.dbgpins.tms_swdio.i,
             o_tms_swdo        = self.dbgpins.tms_swdio.o,
@@ -54,22 +45,16 @@ class DBGIF(Elaboratable):
 
             i_tgt_reset_state = self.dbgpins.nreset_sense,
             o_tgt_reset_pin   = self.dbgpins.reseten,
-            o_nvsen_pin       = self.dbgpins.nvsen,
-            o_nvdrive_pin     = self.dbgpins.nvdriveen,
 
             # Upwards interface to command controller
 	    i_addr32     = self.addr32,
             i_rnw        = self.rnw,
             i_apndp      = self.apndp,
-            o_again      = self.again,
-            o_ignoreData = self.ignoreData,
-            o_postedMode = self.postedMode,
             o_ack        = self.ack,
             i_dwrite     = self.dwrite,
             o_dread      = self.dread,
             i_pinsin     = self.pinsin,
             o_pinsout    = self.pinsout,
-            o_canary     = self.canary,
 
             i_command = self.command,
             i_go      = self.go,

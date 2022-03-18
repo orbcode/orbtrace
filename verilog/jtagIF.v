@@ -11,170 +11,293 @@
 // This gateware uses (obviously!) uses no code from DAPLink and is under BSD licence.
 //
 
-parameter JTAG_CMD_IR     = 0;    // Set IR
-parameter JTAG_CMD_TFR    = 1;    // Perform transfer
-parameter JTAG_CMD_ABORT  = 2;    // Abort transfer
-parameter JTAG_CMD_READID = 3;    // Read ID Code
-
 module jtagIF (
-		input             rst,      // Reset synchronised to clock
-                input             clk,
+		input 		  rst,                     // Reset synchronised to clock
+        input 			  clk,
 
 	// Downwards interface to the JTAG pins
-                input             tdo,      // Test Data Out from targets
-                output reg        tdi,      // Test Data In to targets
-                output reg        tms,      // Test Mode Select to targets
-                output            tck,      // Test clock out to targets
+        input 			  tdo,                      // Test Data Out from targets
+        output reg 		  tdi,                         // Test Data In to targets
+        output reg 		  tms,                     // Test Mode Select to targets
+        output reg   	          tck,                       // Test clock out to targets
 
-                input [2:0]       dev,      // Device in chain we're talking to
-                input [2:0]       ndev,     // Number of devices in JTAG chain-1
-                input [24:0]      irlenx,   // Length of each IR-1, 5x5 bits
+        input [2:0] 	          dev,                // Device in chain we're talking to
+        input [2:0] 	          ndevs,             // Number of devices in JTAG chain-1
+        input [3:0]               ir,                                // ARM JTAG IR value
+        input [29:0] 	          irlenx,                // Length of each IR-1, 6x5 bits
 
-                input             rising,   // Flag indicating rising edge to target
-                input             tclk_in,  // Input target clock
+        input 			  falling,      // Flag indicating falling edge to target
+        input 			  rising,        // Flag indicating rising edge to target
+        input 			  jtagclk_in,                         // Input jtag clock
 
 	// Upwards interface to command controller
+        input [1:0] 	          cmd,                // Command for JTAG IF to carry out
+        input [1:0] 	          addr32,                 // Address bits 3:2 for message
+        input 			  rnw,                   // Set for read, clear for write
+        input 			  apndp,                        // AP(1) or DP(0) access?
+        input [31:0] 	          dwrite,                     // Most recent data from us
+        output reg [2:0]          ack,                          // Most recent ack status
+        output reg [31:0]         dread,                         // Data read from target
 
-                input [1:0]       cmd,      // Command for JTAG IF to carry out
-                input [1:0]       addr32,   // Address bits 3:2 for message
-                input             rnw,      // Set for read, clear for write
-                input             apndp,    // AP(1) or DP(0) access?
-                input [31:0]      dwrite,   // Most recent data from us
-                output reg [2:0]  ack,      // Most recent ack status
-                output reg [31:0] dread,    // Data read from target
-
-                output            canary,   // Debug, in case it's needed
-                input             go,       // Trigger
-                output            idle      // Response
+        input 			  go,                                          // Trigger
+        output 			  idle                                        // Response
 		);
 
    // Internals =========================================================================
-   reg [2:0]                      jtag_state;                 // current state of machine
-   reg [2:0]                      next_state;     // State to switch to after current one
-   reg [4:0]                      tmsbits;                  // Number of TMS bits to send
-   reg [4:0]                      tdxbits;             // Number of data bits to exchange
-
+   reg [3:0]                      jtag_state;                 // current state of machine
+   reg [3:0]                      next_state;     // State to switch to after current one
+   reg [5:0]                      tmsbits;                  // Number of TMS bits to send
+   reg [4:0]                      windex;              // Index into bit sequences in/out
    reg [2:0]                      tmscount;            // Counter for tms bits being sent
    reg [5:0]                      tdxcount;    // Counter for data bits being transferred
-
    reg [2:0]                      devcount;     // Counter for number of devices in chain
 
+   // Commands from layer above
+   parameter JTAG_CMD_IR     = 0;                        // Set IR
+   parameter JTAG_CMD_TFR    = 1;              // Perform transfer
+   parameter JTAG_CMD_READID = 2;                  // Read ID Code
+   parameter JTAG_CMD_RESET  = 3;      // Reset JTAG state machine
 
-   parameter ST_JTAG_IDLE        = 0;
-   parameter ST_JTAG_TMSOUT      = 1;
-   parameter ST_JTAG_READID      = 2;
-   parameter ST_JTAG_READID_DONE = 3;
-   parameter ST_JTAG_DATA        = 4;
-   parameter ST_JTAG_LOADIR      = 5;
-   parameter ST_JTAG_IR          = 6;
+   // States for the machine
+   parameter ST_JTAG_IDLE        = 0;        // Not doing anything
+   parameter ST_JTAG_TMSOUT      = 1;     // Clocking out TMS bits
+   parameter ST_JTAG_READID_DONE = 2;       // Finished reading ID
+   parameter ST_JTAG_IDDATA      = 3;           // Getting ID data
+   parameter ST_JTAG_WRITEIR     = 5;                // Writing IR
+   parameter ST_JTAG_TRANSFER    = 6;  // Performing Data Transfer
 
    assign idle      = (jtag_state==ST_JTAG_IDLE);
-   assign tck       = (idle)?tclk_in:1;
 
-   assign canary    = 0;
+`ifndef SYNTHESIS // ====================================================
+   reg [3:0] 			  stateCopy;
+
+   always @(posedge clk)
+	 begin
+		stateCopy<=jtag_state;
+
+		if (stateCopy!=jtag_state)
+		  case (jtag_state)
+			ST_JTAG_IDLE:
+			  $display("ST_JTAG_IDLE:");
+			ST_JTAG_TMSOUT:
+			  $display("ST_JTAG_TMSOUT:");
+			ST_JTAG_READID_DONE:
+			  $display("ST_JTAG_READID_DONE:");
+			ST_JTAG_IDDATA:
+			  $display("ST_JTAG_IDDATA:");
+			ST_JTAG_WRITEIR:
+			  $display("ST_JTAG_WRITEIR:");
+			ST_JTAG_TRANSFER:
+			  $display("ST_JTAG_TRANSFER:");
+		  endcase // case (jtag_state)
+	 end
+`endif // ===============================================================
+
    always @(posedge clk)
      begin
-        if (rising)
-          begin
-             case (jtag_state)
-               ST_JTAG_IDLE: // Idle waiting for something to happen ====================
+	tck <= (idle)?1'b1:jtagclk_in;
+
+        case (jtag_state)
+          ST_JTAG_IDLE: // Idle waiting for something to happen ====================
+            begin
+	       tdxcount <= 0;
+	       devcount <= 0;
+               if (go & rising)              // Request to start a transfer
                  begin
-                    if (go)                             // Request to start a transfer
-                      begin
-                         case (cmd)
-                           JTAG_CMD_READID:  // Read device id -----------------
-                             begin
-                                tmsbits <= { 3'b001 };
-                                tmscount <= 3;
-                                next_state <= ST_JTAG_READID;
-                                jtag_state <= ST_JTAG_TMSOUT;
-                             end
-
-                           JTAG_CMD_ABORT: // Abort, reset all TAPs ------------
-                             begin
-                                tmsbits <= { 5'b11111 };
-                                tmscount <= 5;
-                                next_state <= ST_JTAG_IDLE;
-                                jtag_state <= ST_JTAG_TMSOUT;
-                             end
-
-                           JTAG_CMD_IR: // Set IR ------------------------------
-                             begin
-                                tmsbits <= { 4'b0011 };
-                                tmscount <= 4;
-                                next_state <= ST_JTAG_LOADIR;
-                                jtag_state <= ST_JTAG_TMSOUT;
-                             end
-
-                         endcase // case (cmd)
-                      end
-                 end // case: ST_JTAG_IDLE
-
-               ST_JTAG_LOADIR: // Load IR ===============================================
-                 begin
-                    devcount <= 0;
-                    tdxcount <= 0;
+		    jtag_state <= ST_JTAG_TMSOUT;
+                    case (cmd)
+                      JTAG_CMD_TFR: // Perform Transfer -------------------
+			begin
+			   tmsbits <= 6'b000010;
+			   tmscount <= 4;
+			   next_state <= ST_JTAG_TRANSFER;
+			end
+                      JTAG_CMD_READID:  // Read device id -----------------
+                        begin
+                           tmsbits <=  6'b000100;
+                           tmscount <= 3;
+                           next_state <= ST_JTAG_IDDATA;
+                        end
+                      JTAG_CMD_IR: // Set IR ------------------------------
+                        begin
+                           tmsbits <= 6'b000110;
+                           tmscount <= 5;
+                           next_state <= ST_JTAG_WRITEIR;
+                        end
+                      JTAG_CMD_RESET: // Reset JTAG State Machine ---------
+                        begin
+                           tmsbits <= 6'b011111;
+                           tmscount <= 6;
+                           next_state <= ST_JTAG_IDLE;
+                        end
+                    endcase // case (cmd)
                  end
-
-               ST_JTAG_READID: // Get to shift-DR state and bypass before data ==========
-                 begin
-                    devcount <= 0;
-                    tdxcount <= 0;
-                    tdxbits  <= 32-1;
-                    next_state <= ST_JTAG_READID_DONE;
-                    jtag_state <= ST_JTAG_DATA;
+            end // case: ST_JTAG_IDLE
+	  
+	  // ========================================================================
+	  // TRANSFER Supporting State
+	  // ========================================================================
+	  //
+	  ST_JTAG_TRANSFER:
+	    begin
+	       // Default action for ACK failure case (longest path, so do it here)
+	       tmsbits    <= 6'b000001;
+	       tmscount   <= 3;
+	       next_state <= ST_JTAG_IDLE;
+	       
+	       if (falling) // ----------- Write Host -> Device ----------
+		 begin
+		    if (devcount!=dev)
+		      tdi<=1'b1;
+		    else
+		      case (tdxcount)
+			0: tdi<=rnw;
+			1: tdi<=addr32[0];
+			2: tdi<=addr32[1];
+			
+			default:
+			  tdi <= rnw?1'b1:dwrite[windex];
+		      endcase // case (tdxcount)
+		    
+		    if ((devcount==ndevs))
+		      tms      <= 1'b1;
+		 end
+	       
+	       if (rising)  // ----------- Read Device -> Host -----------
+		 begin
+		    tdxcount <= tdxcount + 1;
+		    windex   <= windex   + 1;
+		    
+		    case (tdxcount)
+		      0: ack[0]<=tdo;
+		      1: ack[1]<=tdo;
+		      2: 
+			begin
+			   ack[2]<=tdo;
+			   windex<=0;
+			   
+			   // If ack is wait then abort
+			   if ({tdo,ack[1],ack[0]}!=2)
+			     begin
+				tmsbits <= 6'b000011;
+				tmscount <= 3;
+				jtag_state <= ST_JTAG_TMSOUT;
+			     end
+			end
+		      default: dread[windex] <= tdo;
+		    endcase // case (tdxcount)
+		    
+		    // In bypass for every device except the target, so only 1 bit
+		    if ((devcount!=dev) || (34==tdxcount))
+		      begin
+			 if (devcount==ndevs)
+			      jtag_state <= ST_JTAG_TMSOUT;
+			 else
+			   begin
+			      devcount <= devcount + 1;
+			      tdxcount <= 0;
+			   end
+		      end
+		 end // if (rising)
+	    end
+	  
+	  //
+	  // ========================================================================
+	  // READID Supporting States
+	  // ========================================================================
+	  //
+          ST_JTAG_IDDATA: // Clock data in/out =====================================
+	    begin
+	       if ((devcount==dev) & rnw & falling)
+		 begin
+		    tdi <= ((devcount==dev) & (rnw==0))?dwrite[tdxcount]:1'b0;
+		 end
+	       
+	       if (rising)
+		 begin
+		    tdxcount <= tdxcount + 1;
+		    dread[tdxcount] <= tdo;
+		    
+		    // For ID read it's always 32 bits...
+		    if (5'h1f==tdxcount)
+		      begin
+			 if (devcount==ndevs)
+			   jtag_state <= ST_JTAG_READID_DONE;
+			 else
+			   begin
+			      devcount <= devcount + 1;
+			      tdxcount <= 0;
+			   end
+		      end
                  end
-
-               ST_JTAG_READID_DONE: // Finished ID read, so return idle =================
-                 begin
-                    next_state <= ST_JTAG_IDLE;
-                    tmsbits <= 3'b011;
-                    jtag_state <= ST_JTAG_TMSOUT;
-                 end
-
-               ST_JTAG_IR: // Clock IR in ===============================================
-                 begin
-                    tdi <= 1;
-                 end
-
-               ST_JTAG_DATA:   // Clock data in/out =====================================
-                 begin
-                    tdi <= 0;
-                    tdxcount <= tdxcount + 1;
-
-                    if (devcount==dev)
-                      begin
-                         if (rnw)
-                           dread <= { tdo,dread[31:1] };
-                         else
-                           tdi <= dwrite[tdxcount];
-                      end
-
-                    if (tdxbits==tdxcount)
-                      begin
-                         if (devcount==ndev)
-                           jtag_state <= next_state;
-                         else
-                           begin
-                              devcount <= devcount + 1;
-                              tdxbits <= 32-1;
-                              tdxcount <= 0;
-                           end
-                      end
-                 end // case: ST_JTAG_DATA
-
-
-               ST_JTAG_TMSOUT: // clock out defined tms bits ============================
-                 begin
-                    tms     <= tmsbits[0];
-                    tmsbits <= { 1'b0,tmsbits[4:1] };
-                    tmscount <= tmscount-1;
-                    if (tmscount==1)
-                      jtag_state <= next_state;
-                 end
-
-
-             endcase // case (jtag_state)
-          end // if (rising)
+            end // case: ST_JTAG_IDDATA
+	  
+          ST_JTAG_READID_DONE: // Finished ID read, so return idle =================
+	    if (falling)
+              begin
+                 next_state <= ST_JTAG_IDLE;
+                 tmsbits  <= 6'b000110;
+		 tmscount <= 3;
+		 
+                 jtag_state <= ST_JTAG_TMSOUT;
+              end
+	  
+	  // ========================================================================
+	  // SETIR Supporting states
+	  // ========================================================================
+	  
+	  ST_JTAG_WRITEIR: // Clock IR bits =========================================
+	    begin
+	       if (falling)
+		 begin
+		    tdi <= (devcount==dev)?ir[tdxcount]:1'b1;
+		    
+		    // If we are on the last bit then signal tms to leave
+		    if ((devcount==ndevs) && (tdxcount[4:0]+1 == irlenx[ 5*devcount +:5 ] ))
+		      tms <= 1'b1;
+		 end
+	       
+	       if (rising)
+		 begin
+		    tdxcount <= tdxcount + 1;
+		    
+		    if ( tdxcount[4:0]+1 == irlenx[ 5*devcount +:5 ] )
+		      
+		      begin
+			 if (devcount==ndevs)
+			   begin
+			      tmsbits <= 6'b000001;
+			      tmscount <= 2;
+			      next_state <= ST_JTAG_IDLE;
+			      jtag_state <= ST_JTAG_TMSOUT;
+			   end
+			 else
+			   begin
+			      devcount <= devcount + 1;
+			      tdxcount <= 0;
+			   end
+		      end
+		 end
+            end // case: ST_JTAG_WRITEIR
+	  
+	  // ========================================================================
+	  // ========================================================================
+	  
+          ST_JTAG_TMSOUT: // clock out defined tms bits ============================
+	    begin
+	       if (falling)
+		 begin
+		    tmsbits  <= { 1'b1,tmsbits[5:1] };
+		    tmscount <= tmscount-1;
+		    tms      <= tmsbits[0];
+		 end
+	       if (rising)
+		 begin
+		    if (tmscount==0)
+		      jtag_state <= next_state;
+		 end
+	    end
+        endcase // case (jtag_state)
      end // always @ (posedge clk)
 endmodule // jtagIF
+

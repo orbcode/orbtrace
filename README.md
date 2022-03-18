@@ -24,7 +24,7 @@ Building
 
 To burn application firmware using boot button hold down the boot button while powring on the device (Status goes purple), then;
 
-`dfu-util -d 1209:3443 -D build/orbtrace_mini/gateware/orbtrace_mini.bit`
+`dfu-util -d 1209:3443 -a 1 -D build/orbtrace_mini/gateware/orbtrace_mini.bit`
 
 and power cycle.
 
@@ -42,6 +42,15 @@ To burn bootloader and application using openFPGALoader;
 and
 
 `openFPGALoader -c ft232 -f -o 0x100000 build/orbtrace_mini/gateware/orbtrace_mini.bit`
+
+You may need udev rules, in which case add a file 99-orbtrace.rules into /etc/udev/rules.d with the following contents;
+
+```
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1209", ATTRS{idProduct}=="3443", GROUP="plugdev", MODE="0666"
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1209", ATTRS{idProduct}=="3442", GROUP="plugdev", MODE="0666"
+```
+
+...you can then activate the new rules with `sudo udevadm control --reload-rules && sudo udevadm trigger`.
 
 Thanks and stuff
 ----------------
