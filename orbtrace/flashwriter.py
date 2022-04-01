@@ -1,6 +1,6 @@
 from migen import *
 
-from litespi.common import spi_phy_ctl_layout, spi_phy_data_layout, USER
+from litespi.common import spi_core2phy_layout, spi_phy2core_layout
 
 from litex.soc.interconnect.stream import Endpoint
 
@@ -15,17 +15,13 @@ ERASE_SIZE = 65536
 class FlashWriter(Module):
     def __init__(self):
         # PHY interface
-        self.phy_source = phy_source = Endpoint(spi_phy_ctl_layout)
-        self.phy_sink = phy_sink = Endpoint(spi_phy_data_layout)
+        self.phy_source = phy_source = Endpoint(spi_core2phy_layout)
+        self.phy_sink = phy_sink = Endpoint(spi_phy2core_layout)
         self.cs = cs = Signal()
         self.request = request = Signal()
 
         # Write interface
         self.sink = sink = Endpoint([('data', 8), ('addr', 24)])
-
-        self.comb += [
-            phy_source.cmd.eq(USER),
-        ]
 
         erase_required = sink.addr & (ERASE_SIZE - 1) == 0
         erase_done = Signal()

@@ -161,7 +161,6 @@ class OrbSoC(SoCCore):
 
         self.submodules.spiflash_mmap = LiteSPI(
             phy = self.spiflash_phy,
-            clk_freq = self.sys_clk_freq,
             mmap_endianness = self.cpu.endianness,
         )
         self.add_csr('spiflash_mmap')

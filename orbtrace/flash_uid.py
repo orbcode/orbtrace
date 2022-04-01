@@ -1,6 +1,6 @@
 from migen import *
 
-from litespi.common import spi_phy_ctl_layout, spi_phy_data_layout, USER
+from litespi.common import spi_core2phy_layout, spi_phy2core_layout
 
 from litex.soc.interconnect.stream import Endpoint
 from litex.soc.interconnect.csr import AutoCSR, CSRStorage, CSRStatus
@@ -10,8 +10,8 @@ UID_CMD = 0x4b
 class FlashUID(Module, AutoCSR):
     def __init__(self, uid_bytes = 8, dummy_bytes = 4):
         # PHY interface
-        self.phy_source = phy_source = Endpoint(spi_phy_ctl_layout)
-        self.phy_sink = phy_sink = Endpoint(spi_phy_data_layout)
+        self.phy_source = phy_source = Endpoint(spi_core2phy_layout)
+        self.phy_sink = phy_sink = Endpoint(spi_phy2core_layout)
         self.cs = cs = Signal()
         self.request = request = Signal()
 
@@ -37,7 +37,6 @@ class FlashUID(Module, AutoCSR):
             phy_source.len.eq(8),
             phy_source.width.eq(1),
             phy_source.mask.eq(1),
-            phy_source.cmd.eq(USER),
         ]
 
         fsm.act('INIT',
