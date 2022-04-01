@@ -61,7 +61,6 @@ class OrbSoC(SoCCore):
         # SoCCore
         SoCCore.__init__(self, platform, sys_clk_freq,
             ident          = 'LiteX SoC for Orbtrace',
-            ident_version  = True,
             **kwargs)
 
         # CRG
