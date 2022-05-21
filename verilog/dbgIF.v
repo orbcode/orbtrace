@@ -163,7 +163,7 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
    // Slowest clock we will accept (This is ~390K for a 100MHz input clock)
    parameter CDIV_LOG2    = 8;
    parameter MIN_CLOCK    = CLK_FREQ/(2**CDIV_LOG2);
-   parameter MAX_CLOCK    = (CLK_FREQ/2);
+   parameter MAX_CLOCK    = (CLK_FREQ/4);
 
    // Internals =======================================================================
    reg [(CDIV_LOG2-1):0]          cdivcount;       // divisor for external clock
@@ -352,9 +352,12 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
 	     rst_filter <= {rst_filter[1],rst_filter[0],tgt_reset_state};
 
              // Run the clock
-             cdivcount<=cdivcount?cdivcount-1:clkDiv;
-             if (!cdivcount)
-               root_tgtclk <= ~root_tgtclk;
+             cdivcount<=cdivcount-1;
+             if (cdivcount==0)
+	       begin
+		  root_tgtclk <= ~root_tgtclk;
+		  cdivcount   <= clkDiv;
+	       end
 
              // The usecs counter can run all of the time, it's independent
              usecsdiv<=usecsdiv?usecsdiv-1:TICKS_PER_USEC-1;
@@ -464,7 +467,7 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
                           begin
                              commanded_mode <= MODE_JTAG;
 			     ir             <= JTAG_UNKNOWN;
-//                             jtag_cmd       <= JTAG_CMD_ABORT;
+                             jtag_cmd       <= JTAG_CMD_RESET;
                              dbg_state      <= ST_DBG_WAIT_INFERIOR_START;
                           end
 
@@ -486,7 +489,7 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
                              else
                                begin
                                   clkDiv     <= 0;
-                                  divreg     <= MAX_CLOCK;
+                                  divreg     <= CLK_FREQ-1;
                                   dbg_state  <= ST_DBG_CALC_DIV;
                                end
                           end
@@ -542,9 +545,9 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
 		   dbg_state <= JTAG_trans_os?ST_DBG_HANDLE_TRANSACT:ST_DBG_IDLE;
 
                ST_DBG_CALC_DIV: // Calculate division for debug clock =====================================
-                 if (divreg>=dwrite)
+                 if (divreg>={dwrite[30:0],1'b0})
                    begin
-                      divreg     <= divreg-dwrite;
+                      divreg     <= divreg-{dwrite[30:0],1'b0};
                       clkDiv     <= clkDiv+1;
                    end
                  else
@@ -578,7 +581,7 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
                  end // case: ST_DBG_WAIT_INFERIOR_FINISH
 
 
-               ST_DBG_HANDLE_TRANSACT: // A transaction is in progress, deal with it ========================
+               ST_DBG_HANDLE_TRANSACT: // A transaction is in progress, deal with it =======================
 		 begin
 		    // This may not be over JTAG, but in case it is....
 		    JTAG_trans_os <= 0;
@@ -640,7 +643,8 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
 			      dbg_state<=ST_DBG_WAIT_GOCLEAR;
 			   end
 
-                         // We want a sequence of 1's, then the conversion sequeunce, then 1's, then 0's to finish
+                         // We want a sequence of 1's, then the conversion sequeunce, then 1's,
+			 // then 0's to finish
 			 if (state_step>118)
 			   local_swdo<=1'b0;
 			 else
