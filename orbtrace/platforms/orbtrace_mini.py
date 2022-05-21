@@ -25,7 +25,7 @@ _io = [
     ('serial_led', 0, Pins('N12'), IOStandard('LVCMOS33')),
 
     ('programn', 0, Pins('P11'), IOStandard('LVCMOS33')),
-    ('btn', 0, Pins('P12'), IOStandard('LVCMOS33')),
+    ('btn', 0, Pins('P12'), IOStandard('LVCMOS33'), Misc('PULLMODE=NONE')),
 
     # Debug
     ('debug', 0,

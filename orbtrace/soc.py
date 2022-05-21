@@ -117,6 +117,10 @@ class OrbSoC(SoCCore):
         if with_test_io:
             self.add_test_io()
 
+        # Button handler
+        if not bootloader_auto_reset and not with_test_io:
+            self.add_button_handler()
+
         # USB version interface
         self.add_usb_version()
 
@@ -476,6 +480,20 @@ class OrbSoC(SoCCore):
             (gpio[4].data, gpio[4].dir),
             (gpio[5].data, gpio[5].dir),
 
+            # Button
+            (btn,),
+        ]
+
+        self.submodules.test_io = TestIO(signals)
+
+    def add_button_handler(self):
+        # This is a workaround to ensure the button signal is not optimized out.
+        # Optimizing out the button results in the internal pulldown being enabled,
+        # fighting the external pullup.
+
+        btn = self.platform.request('btn')
+
+        signals = [
             # Button
             (btn,),
         ]
