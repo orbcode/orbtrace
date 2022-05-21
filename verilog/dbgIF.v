@@ -79,7 +79,7 @@
 //                    interface pins with CMD_SET_SWJ etc.)
 //
 
-module dbgIF #(parameter CLK_FREQ=120000000, parameter DEFAULT_SWCLK=1000000, parameter DEFAULT_RST_TIMEOUT_USEC=10000) (
+module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, parameter DEFAULT_RST_TIMEOUT_USEC=10000) (
 		input             rst,
                 input             clk,
 
@@ -542,7 +542,7 @@ module dbgIF #(parameter CLK_FREQ=120000000, parameter DEFAULT_SWCLK=1000000, pa
 		   dbg_state <= JTAG_trans_os?ST_DBG_HANDLE_TRANSACT:ST_DBG_IDLE;
 
                ST_DBG_CALC_DIV: // Calculate division for debug clock =====================================
-                 if (divreg>dwrite)
+                 if (divreg>=dwrite)
                    begin
                       divreg     <= divreg-dwrite;
                       clkDiv     <= clkDiv+1;
@@ -656,4 +656,3 @@ module dbgIF #(parameter CLK_FREQ=120000000, parameter DEFAULT_SWCLK=1000000, pa
           end // else: !if(rst)
      end // always @ (posedge clk, posedge rst)
 endmodule // dbgIF
-

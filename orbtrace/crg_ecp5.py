@@ -90,4 +90,4 @@ class CRG(Module, AutoCSR):
 
     def add_debug(self):
         self.clock_domains.cd_debug = ClockDomain()
-        self.pll2.create_clkout(self.cd_debug, 120e6)
+        self.pll2.create_clkout(self.cd_debug, 100e6)
