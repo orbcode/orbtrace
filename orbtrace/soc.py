@@ -1,3 +1,5 @@
+import subprocess
+
 from orbtrace.usb_serialnumber import USBSerialNumberHandler
 from orbtrace.test_io import TestIO
 from migen import *
@@ -114,6 +116,9 @@ class OrbSoC(SoCCore):
         # Test IO
         if with_test_io:
             self.add_test_io()
+
+        # USB version interface
+        self.add_usb_version()
 
         # USB
         self.finalize_usb()
@@ -625,6 +630,21 @@ class OrbSoC(SoCCore):
             (setup.recipient == USBRequestRecipient.DEVICE) & \
             (setup.request == USBStandardRequests.GET_DESCRIPTOR) & \
             (setup.value == (DescriptorTypes.STRING << 8) | self.usb_serial_idx))
+
+    def add_usb_version(self):
+        # USB interface.
+        if_num = self.usb_alloc.interface()
+
+        version = subprocess.check_output('git describe --always --long --dirty', shell = True).decode('utf-8').strip()
+
+        # USB descriptors.
+        with self.usb_conf_desc.InterfaceDescriptor() as i:
+            i.bInterfaceNumber   = if_num
+            i.bInterfaceClass    = 0xff
+            i.bInterfaceSubclass = 0x56
+            i.bInterfaceProtocol = 0x00
+
+            i.iInterface = f'Version: {version}'
 
     def add_usb_control_handler(self, handler):
         if hasattr(self, 'usb_control_ep'):
