@@ -33,6 +33,7 @@ in addition...To ensure everything is up to date;
 ```
 rm -rf build
 git pull --recurse-submodules
+git submodule update --init --recursive
 ```
 
 To burn bootloader and application using openFPGALoader;
