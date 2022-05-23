@@ -173,6 +173,7 @@ class CMSIS_DAP(Elaboratable):
         self.tfr_txb        = Signal(4)      # TFR State machine index (12 states)
 
         # Support for SWJ_Sequence
+        self.transferSCount = Signal(8)      # Number of transfers
         self.swj_txb        = Signal(2)      # SWJ State machine index (4 states)
         self.swjbcount      = Signal(3)      # Swjbcount in transmission sequence
 
@@ -191,7 +192,7 @@ class CMSIS_DAP(Elaboratable):
         self.isJTAG         = Signal()       # Indicator that this is JTAG and not SWD
 
         # Support for DAP_Transfer
-        self.transferCount  = Signal(16)     # Number of transfers 1..65535
+        self.transferTCount = Signal(8)      # Number of transfers
         self.mask           = Signal(32)     # Match mask register
         self.retries        = Signal(16)     # Retry counter for WAIT
         self.matchretries   = Signal(16)     # Retry counter for Value Matching
@@ -404,7 +405,7 @@ class CMSIS_DAP(Elaboratable):
         # Generate SWJ Sequence data
         m.d.sync += [
             # Number of bits to be transferred
-            self.transferCount.eq(Mux(self.rxBlock.bit_select(8,8),Cat(self.rxBlock.bit_select(8,8),C(0,8)),C(256,16))),
+            self.transferSCount.eq(Mux(self.rxBlock.bit_select(8,8),Cat(self.rxBlock.bit_select(8,8),C(0,8)),C(256,16))),
             self.swj_txb.eq(0),
 
             # Setup to have control over swdo, swclk and swwr (set for output), with clocks of 1 clock cycle
@@ -432,7 +433,7 @@ class CMSIS_DAP(Elaboratable):
                 m.d.sync += [
                     self.dbgif.pinsin[0:2].eq(Cat(C(0,1),self.tfrData.bit_select(0,1))),
                     self.tfrData.eq(Cat(C(1,0),self.tfrData[1:8])),
-                    self.transferCount.eq(self.transferCount-1),
+                    self.transferSCount.eq(self.transferSCount-1),
                     self.dbgif.go.eq(1),
                     self.swjbcount.eq(self.swjbcount+1),
                     self.swj_txb.eq(2)
@@ -454,7 +455,7 @@ class CMSIS_DAP(Elaboratable):
                 with m.If(self.dbg_done==0):
                     m.d.sync += self.dbgif.go.eq(0)
                 with m.If ((self.dbgif.go==0) & (self.dbg_done==1)):
-                    with m.If(self.transferCount!=0):
+                    with m.If(self.transferSCount!=0):
                         m.d.sync += self.swj_txb.eq(Mux(self.swjbcount,1,0))
                     with m.Else():
                         m.next = 'DAP_Wait_Done'
@@ -542,7 +543,7 @@ class CMSIS_DAP(Elaboratable):
 
         m.d.sync += [
             self.dbgif.dev.eq(self.rxBlock.bit_select(13,3)),
-            self.transferCount.eq(self.rxBlock.bit_select(16,8)),
+            self.transferTCount.eq(self.rxBlock.bit_select(16,8)),
             self.tfrram.adr.eq(0),
             self.tfr_txb.eq(0),
             self.readAgain.eq(0),
@@ -579,14 +580,14 @@ class CMSIS_DAP(Elaboratable):
                         self.tfrReq.eq(self.PendPayload),
                         self.tfr_txb.eq(1)
                     ]
-                with m.Elif(self.transferCount==0):
+                with m.Elif(self.transferTCount==0):
                     # No more transfers to be performed. If there's a posted transfer in progress then
                     # deal with that, otherwise go to post the reply
                     with m.If(self.readDelay):
                         # This is an end-of-post, so we need to do a read from RDBUFF
                         m.d.sync += [
                             self.tfr_txb.eq(6),
-                            self.tfrReq.eq(0x0f),
+                            self.tfrReq.eq(0x0e),
                             self.readDelay.eq(0),                    
                         ]
                     with m.Else():
@@ -598,8 +599,8 @@ class CMSIS_DAP(Elaboratable):
                         m.d.sync += self.busy.eq(0)
                     with m.Else():
                         # We are consuming this event, so count it
-                        with m.If(self.transferCount):
-                            m.d.sync += self.transferCount.eq(self.transferCount-1)
+                        with m.If(self.transferTCount):
+                            m.d.sync += self.transferTCount.eq(self.transferTCount-1)
                         # This is a good transaction from the stream, so record the fact it's in flow
                         m.d.sync += self.txBlock.word_select(1,8).eq(self.txBlock.word_select(1,8)+1)
                     
@@ -611,7 +612,7 @@ class CMSIS_DAP(Elaboratable):
                                     (~self.isJTAG & (self.streamOut.payload.bit_select(0,2)!=3)))):
                             m.d.sync += [
                                 self.tfr_txb.eq(6),
-                                self.tfrReq.eq(0x0f),
+                                self.tfrReq.eq(0x0e),
                                 self.readDelay.eq(0),
                                 self.readAgain.eq(1),
                                 self.PendPayload.eq(self.streamOut.payload),
@@ -879,7 +880,7 @@ class CMSIS_DAP(Elaboratable):
                 
     def RESP_Transfer_Complete(self, m):
         # Complete the process of returning data collected via either Transfer_Process or
-        # TransferBlock_Process. Data count to be transferred is in self.transferCount and
+        # TransferBlock_Process. Data count to be transferred is inferred by ram address and
         # the payload is in the tfrram.
 
         with m.Switch(self.txb):

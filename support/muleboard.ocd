@@ -1,13 +1,8 @@
-
 source [find interface/cmsis-dap.cfg]
 cmsis_dap_vid_pid 0x1209 0x3443
-#cmsis_dap_backend hid
-#transport select jtag
 transport select swd
 source [find target/stm32f4x.cfg]
 
-adapter speed 500
+adapter speed 10000
 
-reset_config srst_only
-#srst_nogate
 $_TARGETNAME configure -event gdb-detach { shutdown }

@@ -30,9 +30,9 @@
 //                           2      Y     TDI
 //                           3            TDO
 //                           4      Y     SWWR          1==Output SPEC EXTENSION
-//                           5            1'b1
-//                           6      N     nRESET_STATE  Read from pin
-//                           7      N     nRESET_STATE  Read from pin
+//                           5      N     nTRST         Always 1
+//                           6      N     1'b1
+//                           7      Y     nSRST         Read from pin
 //
 //  CMD_TRANSACT    : Execute command transaction on target interface.
 //                          addr32  Bits 2 & 3 of address
@@ -115,6 +115,7 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
 
    parameter TICKS_PER_USEC=CLK_FREQ/1000000;
    parameter DEFAULT_IF_TICKS_PER_CLK=((CLK_FREQ+(DEFAULT_SWCLK>>1))/(DEFAULT_SWCLK<<1))-1;
+   parameter MIN_IDLE_CYCLES=2;
 
    // JTAG DAP Registers
    parameter JTAG_UNKNOWN    = 4'h0;
@@ -255,7 +256,8 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
    assign tck_swclk     = ((dbg_state==ST_DBG_IDLE) || (active_mode==MODE_SWJ))?pinw_swclk:(active_mode==MODE_SWD)?swd_swclk:(active_mode==MODE_JTAG)?jtag_tck:local_tgtclk;
 
    assign tgt_reset_pin = ~((active_mode==MODE_SWJ)?pinw_nreset:(dbg_state!=ST_DBG_RESETTING));
-   assign pinsout       = { (rst_filter==3'b111),(rst_filter==3'b111), 1'b1, swwr, tdo_swo, tdi, swdi, tck_swclk };
+                          //   nReset/nSRST       --   nTRST   --    TDO     TDI  SWDIO   SWCLK
+   assign pinsout       = { (rst_filter==3'b111), 1'b1, 1'b1, swwr, tdo_swo, tdi, swdi, tck_swclk };
 
    // Map JTAG ACK conditions into SWD/CMSIS-DAP ones
    assign ack           = (active_mode==MODE_SWD)?swd_ack:(jtag_ack==1)?ACK_WAIT:((jtag_ack==2)?ACK_OK:ACK_ERROR);
@@ -343,6 +345,7 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
              rst_timeout <= DEFAULT_RST_TIMEOUT_USEC;
              dbg_state   <= ST_DBG_IDLE;
 	     ir          <= JTAG_BYPASS;
+	     idleCycles  <= MIN_IDLE_CYCLES;
 	  end
 	else
           begin
@@ -512,7 +515,7 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
 
                         CMD_SET_TFR_CFG: // Set idle cycles -------------------------------------------
                           begin
-                             idleCycles   <= dwrite[7:0];
+                             idleCycles   <= dwrite[7:0]<MIN_IDLE_CYCLES?MIN_IDLE_CYCLES:dwrite[7:0];
                              dbg_state    <= ST_DBG_WAIT_GOCLEAR;
                           end
 

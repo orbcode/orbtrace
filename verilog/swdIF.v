@@ -181,7 +181,7 @@ module swdIF (
                          if (rnw)
 			   perr <= par;                            // Report any error
 
-                         spincount <= rnw?turnaround:3+idleCycles;
+                         spincount <= rnw?turnaround:idleCycles;
                          swd_state <= ST_COOLING;
                       end // else: !if(bitcount<=PROT_PAR-1)
                  end // case: ST_DATA
