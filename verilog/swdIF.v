@@ -51,51 +51,51 @@ module swdIF (
 
    // States of the reception process
    parameter ST_IDLE         = 0;
-   parameter ST_HDR_TX       = 1;
-   parameter ST_TRN1         = 2;
-   parameter ST_ACK          = 3;
-   parameter ST_TRN2         = 4;
-   parameter ST_DATA         = 5;
-   parameter ST_COOLING      = 6;
+   parameter ST_LINE_PREPARE = 1;
+   parameter ST_HDR_TX       = 2;
+   parameter ST_TRN1         = 3;
+   parameter ST_ACK          = 4;
+   parameter ST_TRN2         = 5;
+   parameter ST_DATA         = 6;
+   parameter ST_COOLING      = 7;
 
    // Elements of the transmission frame
-   parameter PROT_HEAD_STOP  = 7;
-   parameter PROT_HEAD_END   = 8;
-   parameter PROT_TRN1       = 9;
-   parameter PROT_ACK        = 10;
-   parameter PROT_ACK_END    = 12;
-   parameter PROT_TRN2       = 13;
-   parameter PROT_DATA       = 14;
-   parameter PROT_PAR        = 47;
-   parameter PROT_EOF        = 48;
+   parameter PROT_HEAD_END   = 7;
+   parameter PROT_TRN1       = 8;
+   parameter PROT_ACK        = 9;
+   parameter PROT_ACK_END    = 11;
+   parameter PROT_TRN2       = 12;
+   parameter PROT_DATA       = 13;
+   parameter PROT_PAR        = 46;
+   parameter PROT_EOF        = 47;
 
    // Maintain a frame ready to go...
-   //                   47    46..14   13   12..10   9     8     7
+   //                   46    45..13   12   11..9   8     7     6
    //                 Parity   Data     T   Ack    T    Park  Stop
-   wire [47:0] bits = { par,  dwrite, 1'b0, 3'b0, 1'b0, 1'b1, 1'b0,
-   //                                   6
+   wire [46:0] bits = { par,  dwrite, 1'b0, 3'b0, 1'b0, 1'b1, 1'b0,
+   //                                   5
    //                                Parity
                         apndp^rnw^addr32[1]^addr32[0],
-   //                      5          4        3     2     1     0
+   //                      4          3        2     1     0
    //                      A3         A2      RnW  APnDP  Start
-                        addr32[1], addr32[0], rnw, apndp, 1'b1, 1'b0 };
+                        addr32[1], addr32[0], rnw, apndp, 1'b1 };
 
    // Things sent back to caller...
    assign idle      = (swd_state==ST_IDLE);
-   assign swdo      = (idle || (swd_state==ST_COOLING))?0:bits[bitcount];
-   assign swclk_out = (idle || ((swd_state==ST_COOLING) && falling && (spincount==0)))?1:swclk_in;
+   assign swdo      = (idle || (bitcount==PROT_EOF) || (swd_state==ST_LINE_PREPARE))?0:bits[bitcount];
+   assign swclk_out = (idle || (swd_state==ST_LINE_PREPARE))?1:swclk_in;
    assign swwr      = (
                        ((swd_state!=ST_IDLE) && (bitcount<PROT_TRN1)) ||     // Header
-                       ((~rnw) && (bitcount>PROT_TRN2)) ||    // Writing Data & Parity
-		       (bitcount==PROT_EOF)              // Back to TX for next header
+                       ((~rnw) && (bitcount>PROT_TRN2) ||     // Writing Data & Parity
+			(bitcount>PROT_PAR))              // End of the frame, cooling
                       );
 
    always @(posedge clk)
      begin
-        if (falling)
+        if (rising)
           begin
              rd  <= { swdi, rd[31:1] };     // Keep a sliding frame under construction
-             bitcount <= (bitcount<PROT_EOF)?bitcount+1:bitcount;          // Next bit
+             bitcount <= (bitcount!=PROT_EOF)?bitcount+1:bitcount;          // Next bit
 
              case (swd_state)
                ST_IDLE: // Idle waiting for something to happen ======================
@@ -103,18 +103,24 @@ module swdIF (
                     if (go)                             // Request to start a transfer
                       begin
                          bitcount  <= 0;                  // Index through the tx bits
-                         swd_state <= ST_HDR_TX;             // Send the packet header
+			 swd_state <= ST_HDR_TX;         // Ensures a stable 0 on line
                          perr      <= 0;                   // Clear any previous error
                          par       <= 0;               // and clear accumulated parity
                       end // if (go)
                  end
 
+	       ST_LINE_PREPARE: // Extra bit time to establish SWD<=0 ================
+		 begin
+		    bitcount  <= 0;
+		    swd_state <= ST_HDR_TX;                  // Send the packet header
+		 end
+
                ST_HDR_TX: // Sending the packet header ===============================
                  begin
-                    if (bitcount==PROT_HEAD_STOP)                   // Finished header
+                    if (bitcount==PROT_HEAD_END)                    // Finished header
                       begin
                          spincount  <= turnaround;           // Number of bits of turn
-                         swd_state  <= ST_TRN1;              // ...and move to do turn
+			 swd_state  <= ST_TRN1;              // ...and move to do turn
                       end
                  end
 
@@ -123,10 +129,10 @@ module swdIF (
                     spincount<=spincount-1;                        // Turn in progress
 
 		    // Note we're not using 'bitcount' in this state
-                    if (~spincount)
+                    if (!spincount)
 		      begin
+			 bitcount  <= PROT_ACK;         // ... and leave the TRN state
 			 swd_state <= ST_ACK;                 // .. go collect the ACK
-			 bitcount <= PROT_ACK;          // ... and leave the TRN state
 		      end
                  end
 
@@ -135,7 +141,7 @@ module swdIF (
                     if (bitcount==PROT_ACK_END)                       // Have now done
                       begin
                          ack <= {swdi,rd[31:30]};                     // Store the ACK
-                         if ({swdi,rd[31:30]}==3'b001)               // Its a good one
+			 if ({swdi,rd[31:30]}==3'b001)               // Its a good one
                            begin
                               if (rnw)                          // ..and we're reading
 				begin
@@ -160,43 +166,35 @@ module swdIF (
                ST_TRN2: // Turnaround for write time =================================
                  begin
                     spincount <= spincount - 1;              // Click through the turn
+		    bitcount  <= PROT_DATA;                 // ...and collect databits
 
-                    if (spincount==0)
-		      begin
-			 swd_state <= ST_DATA;                         // to dataphase
-			 bitcount <= PROT_TRN2;             // ...and collect databits
-		      end
+                    if (!spincount)
+		      swd_state <= ST_DATA;                            // to dataphase
                  end // case: ST_TRN2
 
                ST_DATA: // Reading or writing 32 bit value ===========================
                  begin
-                    if (bitcount<=PROT_PAR-1)            // (for both rx and tx cases)
-		      begin
-			 if (bitcount!=PROT_TRN2)
-			   par  <= par ^ swdi; 		          // Collecting parity
-			 dread  <= rd;                       // Store a completed read
-		      end
-		    else
+                    par <= par ^ swdi;                            // Collecting parity
+                    if (rnw & (bitcount==PROT_PAR-1))
+		      dread     <= rd;                       // Store a completed read
+
+		    if (bitcount==PROT_PAR)
                       begin
                          if (rnw)
-			   perr <= par;                            // Report any error
-
+			   perr    <= par;                         // Report any error
                          spincount <= rnw?turnaround:idleCycles;
                          swd_state <= ST_COOLING;
-                      end // else: !if(bitcount<=PROT_PAR-1)
+		      end
                  end // case: ST_DATA
 
                ST_COOLING: // Cooling the link before shutting it ====================
                  begin
                     spincount <= spincount-1;                // Click down the cooling
-                    if (spincount==0)
-		      swd_state <= ST_IDLE;                   // ...and return to idle
+                    if (!spincount)
+                      swd_state <= ST_IDLE;                   // ...and return to idle
                  end
 
-               default: // Just in case ==============================================
-                 swd_state <= ST_IDLE;                               // return to idle
-
              endcase // case (swd_state) =============================================
-          end // if (falling)
+          end // if (rising)
      end // always @ (posedge clk)
 endmodule // swdIF

@@ -147,7 +147,7 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
    parameter JTAG_CMD_IR     = 0;    // Set IR
    parameter JTAG_CMD_TFR    = 1;    // Perform transfer
    parameter JTAG_CMD_READID = 2;    // Read ID Code
-   parameter JTAG_CMD_RESET  = 3;    // Perform JTAG machine reset   
+   parameter JTAG_CMD_RESET  = 3;    // Perform JTAG machine reset
 
    // Comms modes - order is important to ensure interface starts in SWD mode by default
    parameter MODE_SWD     = 0;
@@ -172,7 +172,7 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
    reg [31:0]                     modeshift;       // Shift register for changing mode
    reg [31:0]                     divreg;          // Division register
    reg [22:0]                     usecsdown;       // usec downcounter
-   reg [1:0]                      cdc_go;          // Clock domain crossed go
+   reg                            cdc_go;          // Clock domain crossed go
    reg [2:0] 			  rst_filter;      // Bounce removed reset signal
    reg                            JTAG_trans_os;   // If there is a JTAG transaction pending
 
@@ -264,9 +264,9 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
 
    // Edge calculations
    wire        done        = (dbg_state==ST_DBG_IDLE);
-   wire        anedge      = (old_tgtclk^root_tgtclk);
-   wire        fallingedge = (anedge && ((~root_tgtclk) || (dbg_state==ST_DBG_IDLE)));
-   wire        risingedge  = (anedge && root_tgtclk);
+   reg 	       anedge;
+   reg 	       fallingedge;
+   reg 	       risingedge;
 
    // Internals for state management
    wire        if_go       = (dbg_state==ST_DBG_WAIT_INFERIOR_START);
@@ -286,7 +286,6 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
               .turnaround(turnaround),
               .dataphase(dataphase),
               .idleCycles(idleCycles),
-
               .addr32(addr32),
               .rnw(rnw),
               .apndp(apndp),
@@ -346,21 +345,29 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
              dbg_state   <= ST_DBG_IDLE;
 	     ir          <= JTAG_BYPASS;
 	     idleCycles  <= MIN_IDLE_CYCLES;
+	     turnaround  <= 0;
 	  end
 	else
           begin
              // CDC the go signal
-             cdc_go     <= {cdc_go[0],go};
+             cdc_go     <= go;
              old_tgtclk <= root_tgtclk;
 	     rst_filter <= {rst_filter[1],rst_filter[0],tgt_reset_state};
 
-             // Run the clock
-             cdivcount<=cdivcount-1;
-             if (cdivcount==0)
+             // Run the clock, and edge detection
+             cdivcount   <= cdivcount?cdivcount-1:clkDiv;
+	     risingedge  <= 0;
+	     fallingedge <= 0;
+
+	     // Deal with edges, and inversion caused by 50MHz clock
+	     if ((cdivcount==1) || (!clkDiv))
 	       begin
-		  root_tgtclk <= ~root_tgtclk;
-		  cdivcount   <= clkDiv;
+		  fallingedge  <= (root_tgtclk || (dbg_state==ST_DBG_IDLE));
+		  risingedge   <= ~root_tgtclk;
 	       end
+
+	     if (cdivcount==0)
+	       root_tgtclk <= ~root_tgtclk;
 
              // The usecs counter can run all of the time, it's independent
              usecsdiv<=usecsdiv?usecsdiv-1:TICKS_PER_USEC-1;
@@ -371,7 +378,7 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
 
              case(dbg_state)
                ST_DBG_IDLE: // Command request ========================================================
-                 if (cdc_go==2'b11)
+                 if ( { cdc_go,go } ==2'b11 )
                    begin
                       // Reset any outstanding error indication
                       perr <= 0;
@@ -544,7 +551,7 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
                       end // if (go)
 
                ST_DBG_WAIT_GOCLEAR: // Waiting for go indication to clear =================================
-                 if (cdc_go!=2'b11)
+                 if ( { cdc_go,go } == 2'b00 )
 		   dbg_state <= JTAG_trans_os?ST_DBG_HANDLE_TRANSACT:ST_DBG_IDLE;
 
                ST_DBG_CALC_DIV: // Calculate division for debug clock =====================================
