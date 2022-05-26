@@ -572,7 +572,10 @@ class CMSIS_DAP(Elaboratable):
         with m.Switch(self.tfr_txb):
             # Get transfer request from stream, or the previous one if the post is finishing ----------
             with m.Case(0):
-                m.d.sync += self.retries.eq(0)
+                m.d.sync += [
+                    self.retries.eq(self.waitRetry),
+                    self.matchretries.eq(self.matchRetry)
+                    ]
                 with m.If(self.readAgain):
                     m.d.sync += [
                         self.readAgain.eq(0),
@@ -689,8 +692,8 @@ class CMSIS_DAP(Elaboratable):
                     # If we're to retry, then lets do it
                     with m.If(self.dbgif.ack==ACK_WAIT):
                         m.d.sync += [
-                            self.retries.eq(self.retries+1),
-                            self.tfr_txb.eq(Mux((self.retries<self.waitRetry),6,10))
+                            self.retries.eq(self.retries-1),
+                            self.tfr_txb.eq(Mux(self.retries!=0,6,10))
                         ]
 
                     # If we got a bad ACK then give up
@@ -705,7 +708,8 @@ class CMSIS_DAP(Elaboratable):
             with m.Case(9):
                 with m.If(self.tfrReq.bit_select(4,1)):
                     # This is a transfer match request
-                    with m.If(((self.dbgif.dread & self.mask) !=self.tfrData) & (self.matchretries<self.matchRetry)):
+                    m.d.sync += self.matchretries.eq(self.matchretries-1)
+                    with m.If(((self.dbgif.dread & self.mask) !=self.tfrData) & (self.matchretries==0)):
                         # Not a match and we've run out of attempts, so set bit 4
                         m.d.sync += self.txBlock.bit_select(21,1).eq(1)
                         m.d.sync += self.tfr_txb.eq(10)
@@ -771,7 +775,7 @@ class CMSIS_DAP(Elaboratable):
 
             # Reset the number of responses sent back
             self.txBlock.bit_select(8,16).eq(C(0,16)),
-            self.Bretries.eq(0),
+            self.Bretries.eq(self.waitRetry),
 
             # Decide which state to jump to depending on if we have data to collect
             self.tfB_txb.eq(Mux(self.rxBlock.bit_select(33,1),4,0))
@@ -808,7 +812,7 @@ class CMSIS_DAP(Elaboratable):
             with m.Case(4):
                 m.d.sync += [
                     self.dbgif.go.eq(1),
-                    self.Bretries.eq(self.Bretries+1),
+                    self.Bretries.eq(self.Bretries-1),
                     self.tfB_txb.eq(5)
                 ]
 
@@ -829,7 +833,7 @@ class CMSIS_DAP(Elaboratable):
                     # Now lets figure out how to handle this response
                     # If we're to retry, then let's do it
                     with m.If(self.dbgif.ack==ACK_WAIT):
-                        m.d.sync += self.tfB_txb.eq(Mux((self.Bretries<self.waitRetry),4,8))
+                        m.d.sync += self.tfB_txb.eq(Mux(self.Bretries!=0,4,8))
 
                     # If we got a bad ACK then give up
                     with m.Elif((self.dbgif.ack!=ACK_OK) | (self.dbgif.perr)):
@@ -848,7 +852,7 @@ class CMSIS_DAP(Elaboratable):
                         # Keep going if appropriate
                         with m.If((self.transferBCount!=0) | self.readBIgnore):
                             m.d.sync += [
-                                self.Bretries.eq(0),
+                                self.Bretries.eq(self.waitRetry),
                                 self.tfB_txb.eq(Mux(self.dbgif.rnw,4,0))
                             ]
 
