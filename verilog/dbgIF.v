@@ -84,33 +84,34 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
                 input             clk,
 
 	// Downwards interface to the pins
-                input             swdi,            // DIO pin from target
-                output            tms_swdo,        // TMS or DIO pin to target when in SWD mode
-                output            swwr,            // Direction of DIO pin when in SWD mode
-                output            tck_swclk,       // Clock pin to target
-                output            tdi,             // TDI pin to target
-                input             tdo_swo,         // TDO/SWO pin from target
+                input             swdi,                                              // DIO pin from target
+                output            tms_swdo,                    // TMS or DIO pin to target when in SWD mode
+                output            swwr,                            // Direction of DIO pin when in SWD mode
+                output            tck_swclk,                                         // Clock pin to target
+                output            tdi,                                                 // TDI pin to target
+                input             tdo_swo,                                       // TDO/SWO pin from target
 
-                input             tgt_reset_state, // Current state of tgt_reset
-                output            tgt_reset_pin,   // Output pin to pull target reset low
+                input             tgt_reset_state,                            // Current state of tgt_reset
+                output            tgt_reset_pin,                     // Output pin to pull target reset low
 
 	// Interface to command controller ================================================================
-                input [1:0]       addr32,          // Address bits 3:2 for message
-                input             rnw,             // Set for read, clear for write
-                input             apndp,           // AP(1) or DP(0) access?
-                output [2:0]      ack,             // Most recent ack status
-                input [2:0]       dev,             // (JTAG) device on the chain to be communicated with
+                input [1:0]       addr32,                                   // Address bits 3:2 for message
+                input             rnw,                                     // Set for read, clear for write
+                input             apndp,                                          // AP(1) or DP(0) access?
+                output [2:0]      ack,                                            // Most recent ack status
+                input [2:0]       dev,                // (JTAG) device on the chain to be communicated with
 
-                input  [31:0]     dwrite,          // Most recent data or parameter to write
-                output [31:0]     dread,           // Data read from target
+                input  [31:0]     dwrite,                         // Most recent data or parameter to write
+                output [31:0]     dread,                                           // Data read from target
                 input  [15:0]     pinsin,          // Pin setting information to target (upper 8 bits mask)
-                output [7:0]      pinsout,         // Pin information from target
+                output [7:0]      pinsout,                                   // Pin information from target
 
-        // Event triggers and responses
-                input [4:0]       command,         // Command to be performed
-                input             go,              // Trigger
-                output            done,            // Response
-                output reg        perr,            // Indicator of a error in the transfer
+        // Event triggers and responses ===================================================================
+                input [4:0]       command,                                       // Command to be performed
+                input             go,                                                            // Trigger
+                output            done,                                                         // Response
+                output reg        perr,                             // Indicator of a error in the transfer
+        // ================================================================================================
 	      );
 
    parameter TICKS_PER_USEC=CLK_FREQ/1000000;
@@ -144,9 +145,9 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
    parameter CMD_JTAG_REG    = 15;
 
    // Commands down to JTAG layer
-   parameter JTAG_CMD_IR     = 0;    // Set IR
-   parameter JTAG_CMD_TFR    = 1;    // Perform transfer
-   parameter JTAG_CMD_READID = 2;    // Read ID Code
+   parameter JTAG_CMD_IR     = 0;                        // Set IR
+   parameter JTAG_CMD_TFR    = 1;              // Perform transfer
+   parameter JTAG_CMD_READID = 2;                  // Read ID Code
    parameter JTAG_CMD_RESET  = 3;    // Perform JTAG machine reset
 
    // Comms modes - order is important to ensure interface starts in SWD mode by default
@@ -166,35 +167,36 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
    parameter MIN_CLOCK    = CLK_FREQ/(2**CDIV_LOG2);
    parameter MAX_CLOCK    = (CLK_FREQ/4);
 
-   // Internals =======================================================================
-   reg [(CDIV_LOG2-1):0]          cdivcount;       // divisor for external clock
-   reg [10:0]                     usecsdiv;        // Divider for usec
-   reg [31:0]                     modeshift;       // Shift register for changing mode
-   reg [31:0]                     divreg;          // Division register
-   reg [22:0]                     usecsdown;       // usec downcounter
-   reg                            cdc_go;          // Clock domain crossed go
-   reg [2:0] 			  rst_filter;      // Bounce removed reset signal
-   reg                            JTAG_trans_os;   // If there is a JTAG transaction pending
+   // Internals ===========================================================================================
+   reg [(CDIV_LOG2-1):0]          cdivcount;                                  // divisor for external clock
+   reg [10:0]                     usecsdiv;                                             // Divider for usec
+   reg [31:0]                     modeshift;                            // Shift register for changing mode
+   reg [31:0]                     divreg;                                              // Division register
+   reg [22:0]                     usecsdown;                                            // usec downcounter
+   reg                            cdc_go;                                        // Clock domain crossed go
+   reg [2:0] 			  rst_filter;                                // Bounce removed reset signal
+   reg                            JTAG_trans_os;                  // If there is a JTAG transaction pending
+   reg 	                          fallingedge;                                    // This is a falling edge
+   reg 	                          risingedge;                                      // This is a rising edge
 
-   reg [(CDIV_LOG2-1):0]          clkDiv;          // Divisor per clock change to target
+   reg [(CDIV_LOG2-1):0]          clkDiv;                             // Divisor per clock change to target
 
    // SWD Related
-   reg [1:0]                      turnaround;      // Number of cycles for turnaround when in SWD mode
-   reg                            dataphase;       // Indicator of if a dataphase is needed on WAIT/FAULT
-   reg [7:0]                      idleCycles;      // Number of cycles before return to idle
+   reg [1:0]                      turnaround;           // Number of cycles for turnaround when in SWD mode
+   reg                            dataphase;         // Indicator of if a dataphase is needed on WAIT/FAULT
+   reg [7:0]                      idleCycles;                     // Number of cycles before return to idle
 
    // JTAG Related
-   reg [2:0]                      ndevs;           // Number of devices in JTAG chain
-   reg [29:0]                     irlenx;          // Length of each IR-1, 5x5 bits
-   reg [3:0] 			  ir;              // Last written ir contents
+   reg [2:0]                      ndevs;                                 // Number of devices in JTAG chain
+   reg [29:0]                     irlenx;                                  // Length of each IR-1, 5x5 bits
+   reg [3:0] 			  ir;                                           // Last written ir contents
 
    // DBG (adiv protocol level) related
-   reg [22:0]                     rst_timeout;     // Default time for a reset
-   reg [1:0]                      commanded_mode;  // Mode that the interface is requested to be in
-   reg [1:0]                      active_mode;     // Mode that its currently switched to
-   reg [3:0]                      dbg_state;       // Current state of debug handler
-   reg [8:0]                      state_step;      // Stepping through comms states
-   reg                            old_tgtclk;      // Historic swclock to see when an edge occured
+   reg [22:0]                     rst_timeout;                                  // Default time for a reset
+   reg [1:0]                      commanded_mode;          // Mode that the interface is requested to be in
+   reg [1:0]                      active_mode;                       // Mode that its currently switched to
+   reg [3:0]                      dbg_state;                              // Current state of debug handler
+   reg [8:0]                      state_step;                              // Stepping through comms states
 
    // States of the dbgIF state machine
    parameter ST_DBG_IDLE                 = 0;
@@ -250,26 +252,31 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
                           local_swdo;
    assign jtag_tdo      = tdo_swo;
    assign jtag_wr       = 1'b1;
-   assign tdi           = ((dbg_state==ST_DBG_IDLE) || (active_mode==MODE_SWJ))?pinw_tdi:(active_mode==MODE_JTAG)?jtag_tdi:1'b1;
-   assign swwr          = ((dbg_state==ST_DBG_IDLE) || (active_mode==MODE_SWJ))?pinw_swwr:(active_mode==MODE_SWD)?swd_swwr:(active_mode==MODE_JTAG)?jtag_wr:1'b1;
+   assign tdi           = ((dbg_state==ST_DBG_IDLE) || (active_mode==MODE_SWJ))?pinw_tdi
+			  :(active_mode==MODE_JTAG)?jtag_tdi
+			  :1'b1;
+   assign swwr          = ((dbg_state==ST_DBG_IDLE) || (active_mode==MODE_SWJ))?pinw_swwr
+			  :(active_mode==MODE_SWD)?swd_swwr
+			  :(active_mode==MODE_JTAG)?jtag_wr
+			  :1'b1;
    assign dread         = (active_mode==MODE_SWD)?swd_dread:jtag_dread;
-   assign tck_swclk     = ((dbg_state==ST_DBG_IDLE) || (active_mode==MODE_SWJ))?pinw_swclk:(active_mode==MODE_SWD)?swd_swclk:(active_mode==MODE_JTAG)?jtag_tck:local_tgtclk;
+   assign tck_swclk     = ((dbg_state==ST_DBG_IDLE) || (active_mode==MODE_SWJ))?pinw_swclk
+			  :(active_mode==MODE_SWD)?swd_swclk
+			  :(active_mode==MODE_JTAG)?jtag_tck
+			  :local_tgtclk;
 
    assign tgt_reset_pin = ~((active_mode==MODE_SWJ)?pinw_nreset:(dbg_state!=ST_DBG_RESETTING));
                           //   nReset/nSRST       --   nTRST   --    TDO     TDI  SWDIO   SWCLK
    assign pinsout       = { (rst_filter==3'b111), 1'b1, 1'b1, swwr, tdo_swo, tdi, swdi, tck_swclk };
 
    // Map JTAG ACK conditions into SWD/CMSIS-DAP ones
-   assign ack           = (active_mode==MODE_SWD)?swd_ack:(jtag_ack==1)?ACK_WAIT:((jtag_ack==2)?ACK_OK:ACK_ERROR);
+   assign ack           = (active_mode==MODE_SWD)?swd_ack:(jtag_ack==1)?ACK_WAIT
+			  :((jtag_ack==2)?ACK_OK:ACK_ERROR);
 
-   // Edge calculations
-   wire        done        = (dbg_state==ST_DBG_IDLE);
-   reg 	       anedge;
-   reg 	       fallingedge;
-   reg 	       risingedge;
+   wire        done     = (dbg_state==ST_DBG_IDLE);
 
    // Internals for state management
-   wire        if_go       = (dbg_state==ST_DBG_WAIT_INFERIOR_START);
+   wire        if_go    = (dbg_state==ST_DBG_WAIT_INFERIOR_START);
 
    // Connection to the SWD Interface
    swdIF swd_instance (
@@ -332,7 +339,7 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
               .idle(jtag_idle)
 	      );
 
-   //////////////////////////////////////////////////////////////////////////////////////////////////////
+   ////////////////////////////////////////////////////////////////////////////////////////////////////////
    always @(posedge clk, posedge rst)
 
      begin
@@ -350,16 +357,15 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
 	else
           begin
              // CDC the go signal
-             cdc_go     <= go;
-             old_tgtclk <= root_tgtclk;
-	     rst_filter <= {rst_filter[1],rst_filter[0],tgt_reset_state};
+             cdc_go      <= go;
+	     rst_filter  <= {rst_filter[1],rst_filter[0],tgt_reset_state};
 
              // Run the clock, and edge detection
              cdivcount   <= cdivcount?cdivcount-1:clkDiv;
 	     risingedge  <= 0;
 	     fallingedge <= 0;
 
-	     // Deal with edges, and inversion caused by 50MHz clock
+	     // Deal with edges, and inversion caused by 50MHz clock (the !clkDiv case)
 	     if ((cdivcount==1) || (!clkDiv))
 	       begin
 		  fallingedge  <= (root_tgtclk || (dbg_state==ST_DBG_IDLE));
@@ -377,13 +383,14 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
 	       usecsdown <= usecsdown-1;
 
              case(dbg_state)
-               ST_DBG_IDLE: // Command request ========================================================
+	       // =========================================================================================
+               ST_DBG_IDLE: // Command request ============================================================
                  if ( { cdc_go,go } ==2'b11 )
                    begin
                       // Reset any outstanding error indication
                       perr <= 0;
                       case(command)
-                        CMD_PINS_WRITE: // Write pins specified in call -------------------------------
+                        CMD_PINS_WRITE: // Write pins specified in call -----------------------------------
                           if (fallingedge)
 			    begin
 			       ir <= JTAG_UNKNOWN;
@@ -405,7 +412,7 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
 				 end
                             end // case: CMD_PINS_WRITE
 
-                        CMD_RESET: // Reset target ----------------------------------------------------
+                        CMD_RESET: // Reset target --------------------------------------------------------
                           if (fallingedge)
                             begin
 			       ir          <= JTAG_UNKNOWN;
@@ -415,7 +422,7 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
                                dbg_state   <= ST_DBG_RESETTING;
                             end
 
-			CMD_JTAG_REG: // Set register (when using JTAG mode) --------------------------
+			CMD_JTAG_REG: // Set register (when using JTAG mode) ------------------------------
 			  if (fallingedge)
 			    begin
 			       ir             <= JTAG_UNKNOWN;
@@ -424,7 +431,7 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
 			       dbg_state      <= ST_DBG_WAIT_INFERIOR_START;
 			    end
 
-                        CMD_TRANSACT: // Execute transaction on target interface ----------------------
+                        CMD_TRANSACT: // Execute transaction on target interface --------------------------
                           if (fallingedge)
 			    begin
 			       if ((commanded_mode==MODE_JTAG) && (ir!= (apndp?JTAG_APACC:JTAG_DPACC)))
@@ -444,7 +451,7 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
 			       dbg_state     <= ST_DBG_WAIT_INFERIOR_START;
 			    end
 
-                        CMD_SET_SWD: // Set SWD mode --------------------------------------------------
+                        CMD_SET_SWD: // Set SWD mode ------------------------------------------------------
                           if (fallingedge)
 			    begin
 			       active_mode    <= MODE_LOCAL;
@@ -455,7 +462,7 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
                                dbg_state      <= ST_DBG_ESTABLISH_MODE;
                             end
 
-                        CMD_SET_JTAG: // Set JTAG mode ------------------------------------------------
+                        CMD_SET_JTAG: // Set JTAG mode ----------------------------------------------------
                           if (fallingedge)
                             begin
 			       active_mode    <= MODE_LOCAL;
@@ -466,14 +473,14 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
                                dbg_state      <= ST_DBG_ESTABLISH_MODE;
                             end
 
-                        CMD_JTAG_GET_ID: // Get ID of specified JTAG device ---------------------------
+                        CMD_JTAG_GET_ID: // Get ID of specified JTAG device -------------------------------
                           begin
                              commanded_mode   <= MODE_JTAG;
                              jtag_cmd         <= JTAG_CMD_READID;
                              dbg_state        <= ST_DBG_WAIT_INFERIOR_START;
                           end
 
-                        CMD_JTAG_RESET: // Reset all JTAG TAPs ----------------------------------------
+                        CMD_JTAG_RESET: // Reset all JTAG TAPs --------------------------------------------
                           begin
                              commanded_mode <= MODE_JTAG;
 			     ir             <= JTAG_UNKNOWN;
@@ -481,7 +488,7 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
                              dbg_state      <= ST_DBG_WAIT_INFERIOR_START;
                           end
 
-                        CMD_SET_SWJ: // Set SWJ mode --------------------------------------------------
+                        CMD_SET_SWJ: // Set SWJ mode ------------------------------------------------------
                           begin
                              commanded_mode <= MODE_LOCAL;
 			     ir             <= JTAG_UNKNOWN;
@@ -489,7 +496,7 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
                              dbg_state      <= ST_DBG_WAIT_GOCLEAR;
                           end
 
-                        CMD_SET_CLK: // Set clock -----------------------------------------------------
+                        CMD_SET_CLK: // Set clock ---------------------------------------------------------
                           begin
                              if ((dwrite<MIN_CLOCK) || (dwrite>MAX_CLOCK))
                                begin
@@ -504,7 +511,7 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
                                end
                           end
 
-                        CMD_SET_SWD_CFG: // Set SWD Config ---------------------------------------------
+                        CMD_SET_SWD_CFG: // Set SWD Config ------------------------------------------------
                           begin
                              turnaround   <= dwrite[1:0];
 			     ir           <= JTAG_UNKNOWN;
@@ -512,7 +519,7 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
                              dbg_state    <= ST_DBG_WAIT_GOCLEAR;
                           end
 
-                        CMD_SET_JTAG_CFG: // Set JTAG Config ------------------------------------------
+                        CMD_SET_JTAG_CFG: // Set JTAG Config ----------------------------------------------
                           begin
 			     ndevs        <= dev;
 			     irlenx       <= dwrite[29:0];
@@ -520,29 +527,29 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
                              dbg_state    <= ST_DBG_WAIT_GOCLEAR;
                           end
 
-                        CMD_SET_TFR_CFG: // Set idle cycles -------------------------------------------
+                        CMD_SET_TFR_CFG: // Set idle cycles -----------------------------------------------
                           begin
                              idleCycles   <= dwrite[7:0]<MIN_IDLE_CYCLES?MIN_IDLE_CYCLES:dwrite[7:0];
                              dbg_state    <= ST_DBG_WAIT_GOCLEAR;
                           end
 
-                        CMD_WAIT: // Wait for specified number of uS ----------------------------------
+                        CMD_WAIT: // Wait for specified number of uS --------------------------------------
                           begin
                              usecsdown    <= dwrite;
                              usecsdiv     <= TICKS_PER_USEC-1;
                              dbg_state    <= ST_DBG_WAIT_TIMEOUT;
                           end
 
-                        CMD_CLR_ERR: // Clear error status --------------------------------------------
+                        CMD_CLR_ERR: // Clear error status ------------------------------------------------
                           dbg_state       <= ST_DBG_WAIT_GOCLEAR;
 
-                        CMD_SET_RST_TMR: // Set reset timer -------------------------------------------
+                        CMD_SET_RST_TMR: // Set reset timer -----------------------------------------------
                           begin
                              rst_timeout  <= dwrite;
                              dbg_state    <= ST_DBG_WAIT_GOCLEAR;
                           end
 
-                        default: // Unknown, set an error ---------------------------------------------
+                        default: // Unknown, set an error -------------------------------------------------
                           begin
                              perr         <= 1;
                              dbg_state    <= ST_DBG_WAIT_GOCLEAR;
@@ -550,10 +557,12 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
                       endcase // case (command)
                       end // if (go)
 
-               ST_DBG_WAIT_GOCLEAR: // Waiting for go indication to clear =================================
+	       // =========================================================================================
+	       ST_DBG_WAIT_GOCLEAR: // Waiting for go indication to clear =================================
                  if ( { cdc_go,go } == 2'b00 )
 		   dbg_state <= JTAG_trans_os?ST_DBG_HANDLE_TRANSACT:ST_DBG_IDLE;
 
+	       // =========================================================================================
                ST_DBG_CALC_DIV: // Calculate division for debug clock =====================================
                  if (divreg>={dwrite[30:0],1'b0})
                    begin
@@ -566,7 +575,8 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
                       dbg_state  <= ST_DBG_WAIT_GOCLEAR;
                    end
 
-               ST_DBG_WAIT_INFERIOR_FINISH: // Waiting for inferior to complete its task ===================
+	       // =========================================================================================
+               ST_DBG_WAIT_INFERIOR_FINISH: // Waiting for inferior to complete its task ==================
                  begin
                     case (active_mode)
                       MODE_SWD:
@@ -590,16 +600,16 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
                     endcase // case (active_mode)
                  end // case: ST_DBG_WAIT_INFERIOR_FINISH
 
-
-               ST_DBG_HANDLE_TRANSACT: // A transaction is in progress, deal with it =======================
+	       // =========================================================================================
+               ST_DBG_HANDLE_TRANSACT: // A transaction is in progress, deal with it ======================
 		 begin
 		    // This may not be over JTAG, but in case it is....
 		    JTAG_trans_os <= 0;
 		    jtag_cmd      <= JTAG_CMD_TFR;
                     dbg_state     <= ST_DBG_WAIT_INFERIOR_START;
                  end
-
-               ST_DBG_WAIT_INFERIOR_START: // Waiting for inferior to start its task =======================
+	       // =========================================================================================
+               ST_DBG_WAIT_INFERIOR_START: // Waiting for inferior to start its task ======================
                  begin
                     case (active_mode)
                       MODE_SWD:
@@ -618,14 +628,17 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
                     endcase // case (active_mode)
                  end
 
+	       // =========================================================================================
                ST_DBG_WAIT_TIMEOUT: // Waiting for timeout to complete ====================================
                  if (!usecsdown)
                    dbg_state <= ST_DBG_WAIT_GOCLEAR;
 
+	       // =========================================================================================
                ST_DBG_WAIT_CLKCHANGE: // Waiting for clock state to change ================================
                  if (fallingedge)
                    dbg_state <= ST_DBG_WAIT_GOCLEAR;
 
+	       // =========================================================================================
                ST_DBG_RESETTING: // We are in reset =======================================================
                  if (!usecsdown)
                    begin
@@ -633,10 +646,12 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
                       dbg_state <= ST_DBG_RESET_GUARD;
                    end
 
+	       // =========================================================================================
                ST_DBG_RESET_GUARD: // We have finished reset, but wait for chip to ack ====================
                  if ((rst_filter==3'b111) || (!usecsdown))
                    dbg_state<=ST_DBG_WAIT_GOCLEAR;
 
+	       // =========================================================================================
                ST_DBG_ESTABLISH_MODE: // We want to set a specific mode ===================================
                  begin
                     local_tgtclk<=root_tgtclk;

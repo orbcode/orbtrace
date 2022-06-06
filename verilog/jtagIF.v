@@ -12,48 +12,48 @@
 //
 
 module jtagIF (
-		input 		  rst,                     // Reset synchronised to clock
+	input 		          rst,                                       // Reset synchronised to clock
         input 			  clk,
 
-	// Downwards interface to the JTAG pins
-        input 			  tdo,                      // Test Data Out from targets
-        output reg 		  tdi,                         // Test Data In to targets
-        output reg 		  tms,                     // Test Mode Select to targets
-        output reg   	          tck,                       // Test clock out to targets
+	// Downwards interface to the JTAG pins ===========================================================
+        input 			  tdo,                                        // Test Data Out from targets
+        output reg 		  tdi,                                           // Test Data In to targets
+        output reg 		  tms,                                       // Test Mode Select to targets
+        output reg   	          tck,                                         // Test clock out to targets
 
-        input [2:0] 	          dev,                // Device in chain we're talking to
-        input [2:0] 	          ndevs,             // Number of devices in JTAG chain-1
-        input [3:0]               ir,                                // ARM JTAG IR value
-        input [29:0] 	          irlenx,                // Length of each IR-1, 6x5 bits
+	// Upwards interface to command controller ========================================================
+        input [2:0] 	          dev,                                  // Device in chain we're talking to
+        input [2:0] 	          ndevs,                               // Number of devices in JTAG chain-1
+        input [29:0] 	          irlenx,                                  // Length of each IR-1, 6x5 bits
+        input [3:0]               ir,                                                  // ARM JTAG IR value
 
-        input 			  falling,      // Flag indicating falling edge to target
-        input 			  rising,        // Flag indicating rising edge to target
-        input 			  jtagclk_in,                         // Input jtag clock
+        input 			  falling,                        // Flag indicating falling edge to target
+        input 			  rising,                          // Flag indicating rising edge to target
+        input 			  jtagclk_in,                                           // Input jtag clock
 
-	// Upwards interface to command controller
-        input [1:0] 	          cmd,                // Command for JTAG IF to carry out
-        input [1:0] 	          addr32,                 // Address bits 3:2 for message
-        input 			  rnw,                   // Set for read, clear for write
-        input 			  apndp,                        // AP(1) or DP(0) access?
-        input [31:0] 	          dwrite,                     // Most recent data from us
-        output reg [2:0]          ack,                          // Most recent ack status
-        output reg [31:0]         dread,                         // Data read from target
+        input [1:0] 	          cmd,                                  // Command for JTAG IF to carry out
+        input [1:0] 	          addr32,                                   // Address bits 3:2 for message
+        input 			  rnw,                                     // Set for read, clear for write
+        input 			  apndp,                                          // AP(1) or DP(0) access?
+        input [31:0] 	          dwrite,                                       // Most recent data from us
+        output reg [2:0]          ack,                                            // Most recent ack status
+        output reg [31:0]         dread,                                           // Data read from target
 
-        input 			  go,                                          // Trigger
-        output 			  idle                                        // Response
+        input 			  go,                                                            // Trigger
+        output 			  idle                                                          // Response
 		);
 
-   // Internals =========================================================================
-   reg [3:0]                      jtag_state;                 // current state of machine
-   reg [3:0]                      next_state;     // State to switch to after current one
-   reg [5:0]                      tmsbits;                  // Number of TMS bits to send
-   reg [4:0]                      windex;              // Index into bit sequences in/out
-   reg [4:0] 			  nwindex;        // Next index into bit sequences in/out
-   reg [2:0]                      tmscount;            // Counter for tms bits being sent
-   reg [2:0]                      ntmscount;      // Next counter for tms bits being sent   
-   reg [5:0]                      tdxcount;    // Counter for data bits being transferred
-   reg [5:0] 			  ntdxcount;                // Next counter for data bits
-   reg [2:0]                      devcount;     // Counter for number of devices in chain
+   // Internals ===========================================================================================
+   reg [3:0]                      jtag_state;                                   // current state of machine
+   reg [3:0]                      next_state;                       // State to switch to after current one
+   reg [5:0]                      tmsbits;                                    // Number of TMS bits to send
+   reg [4:0]                      windex;                                // Index into bit sequences in/out
+   reg [4:0] 			  nwindex;                          // Next index into bit sequences in/out
+   reg [2:0]                      tmscount;                              // Counter for tms bits being sent
+   reg [2:0]                      ntmscount;                        // Next counter for tms bits being sent
+   reg [5:0]                      tdxcount;                      // Counter for data bits being transferred
+   reg [5:0] 			  ntdxcount;                                  // Next counter for data bits
+   reg [2:0]                      devcount;                       // Counter for number of devices in chain
 
    // Commands from layer above
    parameter JTAG_CMD_IR     = 0;                        // Set IR
@@ -74,12 +74,13 @@ module jtagIF (
    assign ntdxcount = tdxcount+1;
    assign nwindex   = windex+1;
 
-`ifndef SYNTHESIS // ====================================================
+// ========================================================================================================
+`ifndef SYNTHESIS // ======================================================================================
    reg [3:0] 			  stateCopy;
 
    always @(posedge clk)
 	 begin
-		stateCopy<=jtag_state;
+		stateCopy <= jtag_state;
 
 		if (stateCopy!=jtag_state)
 		  case (jtag_state)
@@ -97,14 +98,15 @@ module jtagIF (
 			  $display("ST_JTAG_TRANSFER:");
 		  endcase // case (jtag_state)
 	 end
-`endif // ===============================================================
+`endif // =================================================================================================
 
    always @(posedge clk)
      begin
 	tck <= (idle)?1'b1:jtagclk_in;
 
         case (jtag_state)
-          ST_JTAG_IDLE: // Idle waiting for something to happen ====================
+	  // ==============================================================================================
+          ST_JTAG_IDLE: // Idle waiting for something to happen ===========================================
             begin
 	       tdxcount <= 0;
 	       devcount <= 0;
@@ -112,25 +114,25 @@ module jtagIF (
                  begin
 		    jtag_state <= ST_JTAG_TMSOUT;
                     case (cmd)
-                      JTAG_CMD_TFR: // Perform Transfer -------------------
+                      JTAG_CMD_TFR: // Perform Transfer ---------------------------------------------------
 			begin
 			   tmsbits <= 6'b000100;
 			   tmscount <= 3;
 			   next_state <= ST_JTAG_TRANSFER;
 			end
-                      JTAG_CMD_READID:  // Read device id -----------------
+                      JTAG_CMD_READID:  // Read device id -------------------------------------------------
                         begin
                            tmsbits <=  6'b000100;
                            tmscount <= 4;
                            next_state <= ST_JTAG_IDDATA;
                         end
-                      JTAG_CMD_IR: // Set IR ------------------------------
+                      JTAG_CMD_IR: // Set IR --------------------------------------------------------------
                         begin
                            tmsbits <=  6'b0001100;
                            tmscount <= 4;
                            next_state <= ST_JTAG_WRITEIR;
                         end
-                      JTAG_CMD_RESET: // Reset JTAG State Machine ---------
+                      JTAG_CMD_RESET: // Reset JTAG State Machine -----------------------------------------
                         begin
                            tmsbits <= 6'b111110;
                            tmscount <= 6;
@@ -140,18 +142,15 @@ module jtagIF (
                  end
             end // case: ST_JTAG_IDLE
 	  
-	  // ========================================================================
-	  // TRANSFER Supporting State
-	  // ========================================================================
-	  //
-	  ST_JTAG_TRANSFER:
+	  // ==============================================================================================
+	  ST_JTAG_TRANSFER: // TRANSFER Supporting State ==================================================
 	    begin
 	       // Default action for ACK failure case (longest path, so do it here)
 	       tmsbits    <= 6'b000100; // 6'b000001;
 	       tmscount   <= 3;
 	       next_state <= ST_JTAG_IDLE;
 	       
-	       if (falling) // ----------- Write Host -> Device ----------
+	       if (falling) // Write Host -> Device -------------------------------------------------------
 		 begin
 		    if (devcount!=dev)
 		      tdi<=1'b1;
@@ -169,7 +168,7 @@ module jtagIF (
 		      tms      <= 1'b1;
 		 end
 	       
-	       if (rising)  // ----------- Read Device -> Host -----------
+	       if (rising)  // Read Device -> Host --------------------------------------------------------
 		 begin
 		    tdxcount <= ntdxcount;
 		    windex   <= nwindex;
@@ -207,12 +206,8 @@ module jtagIF (
 		 end // if (rising)
 	    end
 	  
-	  //
-	  // ========================================================================
-	  // READID Supporting States
-	  // ========================================================================
-	  //
-          ST_JTAG_IDDATA: // Clock data in/out =====================================
+	  // ==============================================================================================
+          ST_JTAG_IDDATA: // READID Supporting States =====================================================
 	    begin
 	       if (falling)
 		 tdi <= ((devcount==dev) & (rnw==0))?dwrite[tdxcount]:1'b0;
@@ -235,8 +230,9 @@ module jtagIF (
 		      end
                  end
             end // case: ST_JTAG_IDDATA
-	  
-          ST_JTAG_READID_DONE: // Finished ID read, so return idle =================
+
+	  // -----------------------------------------------------------------------
+          ST_JTAG_READID_DONE: // Finished ID read, so return idle -----------------
 	    begin
                next_state <= ST_JTAG_IDLE;
                tmsbits  <= 6'b000110;
@@ -245,11 +241,8 @@ module jtagIF (
                  jtag_state <= ST_JTAG_TMSOUT;
             end
 	  
-	  // ========================================================================
-	  // SETIR Supporting states
-	  // ========================================================================
-	  
-	  ST_JTAG_WRITEIR: // Clock IR bits =========================================
+	  // ==============================================================================================
+	  ST_JTAG_WRITEIR: // SETIR Supporting states =====================================================
 	    begin
 	       tmsbits <= 6'b000010;
 	       tmscount <= 2;
@@ -282,10 +275,8 @@ module jtagIF (
 		 end
             end // case: ST_JTAG_WRITEIR
 	  
-	  // ========================================================================
-	  // ========================================================================
-	  
-          ST_JTAG_TMSOUT: // clock out defined tms bits ============================
+	  // ==============================================================================================
+          ST_JTAG_TMSOUT: // clock out defined tms bits ===================================================
 	    begin
 	       if (falling)
 		 begin
