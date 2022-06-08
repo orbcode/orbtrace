@@ -426,7 +426,11 @@ class CMSIS_DAP(Elaboratable):
                         self.swj_txb.eq(1)
                     ]
                 with m.Else():
-                    m.d.sync += self.busy.eq(0)
+                    # If we're showing ~valid then this packet is foreshortened
+                    with m.If(~self.streamOut.valid):
+                        m.next = 'Error'
+                    with m.Else():
+                        m.d.sync += self.busy.eq(0)
 
             # Write the data bit -----------------------------------------------------------------------
             with m.Case(1):
@@ -495,7 +499,11 @@ class CMSIS_DAP(Elaboratable):
                 m.d.sync += self.dbgif.go.eq(1)
                 m.next = 'DAP_Wait_Done'
         with m.Else():
-            m.d.sync += self.busy.eq(0)
+            # If we're showing ~valid then this packet is foreshortened
+            with m.If(~self.streamOut.valid):
+                m.next = 'Error'
+            with m.Else():
+                m.d.sync += self.busy.eq(0)
 
     # ----------------------------------------------------------------------------------
     # ----------------------------------------------------------------------------------
@@ -596,10 +604,14 @@ class CMSIS_DAP(Elaboratable):
                     with m.Else():
                         # Otherwise progress to the exit states
                         m.d.sync += self.tfr_txb.eq(10)
-                        
+
                 with m.Else():
                     with m.If(~(self.streamOut.valid & self.streamOut.ready)):
-                        m.d.sync += self.busy.eq(0)
+                        # If we're showing ~valid then this packet is foreshortened
+                        with m.If(~self.streamOut.valid):
+                            m.next = 'Error'
+                        with m.Else():
+                            m.d.sync += self.busy.eq(0)
                     with m.Else():
                         # We are consuming this event, so count it
                         with m.If(self.transferTCount):
@@ -661,7 +673,11 @@ class CMSIS_DAP(Elaboratable):
                             self.tfr_txb.eq(0)
                         ]
                 with m.Else():
-                    m.d.sync +=self.busy.eq(0)
+                    # If we're showing ~valid then this packet is foreshortened
+                    with m.If(~self.streamOut.valid):
+                        m.next = 'Error'
+                    with m.Else():
+                        m.d.sync +=self.busy.eq(0)
 
             # We have the command and any needed data, action it ---------------------------------------
             with m.Case(6):
@@ -806,7 +822,11 @@ class CMSIS_DAP(Elaboratable):
                         self.tfB_txb.eq(self.tfB_txb+1),
                     ]
                 with m.Else():
-                    m.d.sync +=self.busy.eq(0)
+                    # If we're showing ~valid then this packet is foreshortened
+                    with m.If(~self.streamOut.valid):
+                        m.next = 'Error'
+                    with m.Else():
+                        m.d.sync +=self.busy.eq(0)
 
             # We have the command and any needed data, action it ---------------------------------------
             with m.Case(4):
@@ -1004,7 +1024,11 @@ class CMSIS_DAP(Elaboratable):
                     with m.If(self.isJTAG):
                         m.d.sync += self.dbgif.pinsin.bit_select(1,1).eq(self.streamOut.payload[6])
                 with m.Else():
-                    m.d.sync += self.busy.eq(0)
+                    # If we're showing ~valid then this packet is foreshortened
+                    with m.If(~self.streamOut.valid):
+                        m.next = 'Error'
+                    with m.Else():
+                        m.d.sync += self.busy.eq(0)
 
             # -------------- We are writing SWO, or JTAG, so get byte of output data
             with m.Case(2):
@@ -1015,7 +1039,11 @@ class CMSIS_DAP(Elaboratable):
                         self.seq_txb.eq(3)
                     ]
                 with m.Else():
-                    m.d.sync += self.busy.eq(0)
+                    # If we're showing ~valid then this packet is foreshortened
+                    with m.If(~self.streamOut.valid):
+                        m.next = 'Error'
+                    with m.Else():
+                        m.d.sync += self.busy.eq(0)
 
             # -------------- Now output or input these data
             with m.Case(3):
@@ -1206,12 +1234,13 @@ class CMSIS_DAP(Elaboratable):
                     with m.If(self.rxedLen+1==self.rxLen):
                         m.next = 'Dispatch'
 
-                    # Check to make sure this packet isn't foreshortened
-                    with m.Elif(self.streamOut.last):
-                        m.next = 'Error'
                 with m.Else():
-                    # Otherwise request data
-                    m.d.sync += self.busy.eq(0)
+                    # If we're showing ~valid then this packet is foreshortened
+                    with m.If(~self.streamOut.valid):
+                        m.next = 'Error'
+                    with m.Else():
+                        # Otherwise request data
+                        m.d.sync += self.busy.eq(0)
 
     #########################################################################################
 

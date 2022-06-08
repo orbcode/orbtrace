@@ -104,7 +104,7 @@ module swdIF (
                     if (go)                                                  // Request to start a transfer
                       begin
                          bitcount  <= 0;                                       // Index through the tx bits
-			 swd_state <= ST_HDR_TX;  // Switch to ST_LINE_PREPARE to ensure a stable 0 on line
+			 swd_state <= ST_LINE_PREPARE;                         // Ensure a stable 0 on line
                          perr      <= 0;                                        // Clear any previous error
                          par       <= 0;                                    // and clear accumulated parity
                       end // if (go)
