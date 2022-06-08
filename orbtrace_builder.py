@@ -60,6 +60,7 @@ def main():
 
     parser_orbtrace.add_argument('--led-default', type = lambda x: int(x, 16), default = 0xa, help = 'Default LED settings')
     parser_orbtrace.add_argument('--bootloader-auto-reset', action = 'store_true', help = 'Enable auto-reset to jump from bootloader to app')
+    parser_orbtrace.add_argument('--with-reset-csr', action = 'store_true', help = 'Enable reset CSR')
 
     parser.set_defaults(**Platform.get_profile(args.profile))
 
@@ -83,6 +84,7 @@ def main():
         with_trace = args.with_trace,
         with_target_power = args.with_target_power,
         with_dfu = args.with_dfu,
+        with_reset_csr = args.with_reset_csr,
         with_test_io = args.with_test_io,
         usb_vid = args.usb_vid,
         usb_pid = args.usb_pid,

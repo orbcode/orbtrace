@@ -25,6 +25,8 @@ from .flashwriter import FlashWriter
 
 from .led_ctrl import LEDCtrl
 
+from .reset import Reset
+
 from usb_protocol.types      import USBTransferType, USBRequestType, USBStandardRequests, USBRequestRecipient, DescriptorTypes
 from usb_protocol.emitters   import DeviceDescriptorCollection
 from usb_protocol.emitters.descriptors import cdc
@@ -58,7 +60,7 @@ class USBAllocator:
         return n
 
 class OrbSoC(SoCCore):
-    def __init__(self, platform, sys_clk_freq, with_debug, with_trace, with_target_power, with_dfu, with_test_io, usb_vid, usb_pid, led_default, bootloader_auto_reset, **kwargs):
+    def __init__(self, platform, sys_clk_freq, with_debug, with_trace, with_target_power, with_dfu, with_reset_csr, with_test_io, usb_vid, usb_pid, led_default, bootloader_auto_reset, **kwargs):
 
         # SoCCore
         SoCCore.__init__(self, platform, sys_clk_freq,
@@ -80,6 +82,10 @@ class OrbSoC(SoCCore):
         # Bootloader auto reset
         if bootloader_auto_reset:
             self.add_auto_reset()
+
+        # Reset CSR
+        if with_reset_csr:
+            self.add_reset_csr()
 
         # USB
         self.add_usb(usb_vid, usb_pid)
@@ -140,6 +146,13 @@ class OrbSoC(SoCCore):
         )
 
         self.comb += programn.eq(~reset)
+
+    def add_reset_csr(self):
+        programn = self.platform.request('programn')
+
+        self.submodules.reset = Reset()
+
+        self.comb += programn.eq(~self.reset.reset)
 
     def add_leds(self, default):
         if hasattr(self.platform, 'add_leds'):

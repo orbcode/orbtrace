@@ -236,6 +236,7 @@ class Platform(LatticePlatform):
                 'uart_name': 'stream',
                 'with_debug': False,
                 'with_trace': False,
+                'with_reset_csr': True,
                 'with_test_io': True,
                 'with_dfu': 'bootloader',
                 'usb_pid': 0x0001,
