@@ -22,7 +22,7 @@ Building
 
 To burn application firmware using boot button hold down the boot button while powring on the device (Status goes purple), then;
 
-`dfu-util -d 1209:3443 -a 1 -D build/orbtrace_mini/gateware/orbtrace_mini.bit`
+`dfu-util -d 1209:3442 -a 1 -D build/orbtrace_mini/gateware/orbtrace_mini.bit`
 
 and power cycle.
 
