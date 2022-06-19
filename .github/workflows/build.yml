@@ -22,11 +22,13 @@ jobs:
       run: python3 -m pip install wheel construct meson ninja setuptools setuptools_scm Jinja2
         
     - name: build
-      run: ./orbtrace_builder.py --platform orbtrace_mini --build
+      run: |
+        ./orbtrace_builder.py --platform orbtrace_mini --build
+        ./orbtrace_builder.py --platform orbtrace_mini --profile dfu --build 
+        ./orbtrace_builder.py --platform orbtrace_mini --profile test --build 
 
     - name: upload bitstream
       uses: actions/upload-artifact@v2
       with:
         name: orbtrace_mini bitstream
         path: ${{ github.workspace }}/build/orbtrace_mini/gateware/orbtrace_mini.bit
-  
