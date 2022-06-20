@@ -162,8 +162,8 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
    parameter ACK_WAIT     = 2;
    parameter ACK_ERROR    = 4;
 
-   // Slowest clock we will accept (This is ~390K for a 100MHz input clock)
-   parameter CDIV_LOG2    = 8;
+   // Slowest clock we will accept (This is ~195K for a 100MHz input clock)
+   parameter CDIV_LOG2    = 9;
    parameter MIN_CLOCK    = CLK_FREQ/(2**CDIV_LOG2);
    parameter MAX_CLOCK    = (CLK_FREQ/4);
 
