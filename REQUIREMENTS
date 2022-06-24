@@ -1,0 +1,20 @@
+If you just want the latest bit files then the easiest option is to grab
+them from the outputs of the CI tools which are linked from
+https://github.com/orbcode/orbtrace/actions
+
+To build on Linux you will need yosys (https://github.com/YosysHQ/yosys),
+nextpnr (https://github.com/YosysHQ/nextpnr) and, optionally,
+a GCC RISC-V toolchain (https://github.com/riscv-collab/riscv-gnu-toolchain).
+
+You can also get everything as part of oss-cad-suite
+(https://github.com/YosysHQ/oss-cad-suite-build), or look at the CI
+workflow at https://github.com/orbcode/orbtrace/blob/main/.github/workflows/build.yml
+
+Dependancies such as Linux, Amaranth and Migen are automatically downloaded
+as part of the build process, so you don't need to get those manuallly...and
+indeed, your versions won't be used even if you do.
+
+ORBTrace has been sucessfully built on OSX and Linux (Specifically Ubuntu). If
+you have any problems building on your platform please drop us a note and
+we can expand the instructions.
+
