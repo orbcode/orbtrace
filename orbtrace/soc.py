@@ -419,6 +419,9 @@ class OrbSoC(SoCCore):
                 is_v2.eq(1),
             ]
 
+        # SWO
+        self.comb += self.trace.swo.eq(self.cmsis_dap.swo)
+
     def add_trace(self):
         # Trace core.
         self.submodules.trace = TraceCore(self.platform)

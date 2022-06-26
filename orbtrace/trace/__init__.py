@@ -4,6 +4,8 @@ from migen.genlib.cdc import MultiReg
 from litex.soc.interconnect.stream import Endpoint, AsyncFIFO, Pipeline, CombinatorialActor, Converter
 from litex.build.io import DDRInput
 
+from .swo import ManchesterDecoder, PulseLengthCapture, BitsToBytes
+
 class TracePHY(Module):
     def __init__(self, pads):
         self.source = source = Endpoint([('data', 128)])
@@ -247,9 +249,27 @@ class TraceCore(Module):
 
         self.submodules += monitor, keepalive
 
+        # SWO pipeline.
+        self.swo = Signal(2)
+
+        swo_pipeline = [
+            swo_phy := ClockDomainsRenamer('swo2x')(PulseLengthCapture(16)),
+            ClockDomainsRenamer({'write': 'swo2x', 'read': 'swo'})(AsyncFIFO([('count', 16), ('level', 1)], 4)),
+            ClockDomainsRenamer('swo')(ManchesterDecoder(16)),
+            ClockDomainsRenamer('swo')(BitsToBytes()),
+            ClockDomainsRenamer({'write': 'swo', 'read': 'sys'})(AsyncFIFO([('data', 8)], 4)),
+        ]
+
+        swo_stream = Endpoint([('data', 8)])
+
+        self.submodules += [*swo_pipeline, Pipeline(*swo_pipeline, swo_stream)]
+
+        self.comb += swo_phy.input_signal.eq(self.swo)
+
         # Output mux
         self.comb += [
             If(trace_active, trace_stream.connect(source)),
+            If(swo_active, swo_stream.connect(source)),
         ]
 
         # Indicators
