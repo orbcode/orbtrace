@@ -1,7 +1,7 @@
 from migen import *
 from migen.genlib.cdc import MultiReg
 
-from litex.soc.interconnect.stream import Endpoint, AsyncFIFO, Pipeline, CombinatorialActor, Converter
+from litex.soc.interconnect.stream import Endpoint, AsyncFIFO, Pipeline, CombinatorialActor, Converter, SyncFIFO
 from litex.build.io import DDRInput
 
 from .swo import ManchesterDecoder, PulseLengthCapture, BitsToBytes
@@ -170,6 +170,51 @@ class Keepalive(Module):
             source.last.eq(1),
         ]
 
+class StreamFlush(Module):
+    def __init__(self, timeout):
+        self.sink = sink = Endpoint([('data', 8)])
+        self.source = source = Endpoint([('data', 8)])
+
+        timeout_cnt = Signal(max = timeout + 1)
+        timeout_hit = Signal()
+
+        data = Signal(8)
+        first = Signal()
+        last = Signal()
+        valid = Signal()
+
+        self.comb += [
+            timeout_hit.eq(timeout_cnt == 0),
+
+            sink.ready.eq(~valid | (source.ready & source.valid)),
+
+            source.data.eq(data),
+            source.first.eq(first),
+            source.last.eq(last | timeout_hit),
+            source.valid.eq(valid & (sink.valid | timeout_hit)),
+        ]
+
+        self.sync += [
+            If(valid & ~timeout_hit,
+                timeout_cnt.eq(timeout_cnt - 1),
+            ),
+
+            If(source.valid & source.ready,
+                valid.eq(0),
+            ),
+
+            If(sink.valid & sink.ready,
+                data.eq(sink.data),
+                first.eq(sink.first),
+                last.eq(sink.last),
+                valid.eq(1),
+
+                If(~valid | timeout_hit,
+                    timeout_cnt.eq(timeout),
+                ),
+            ),
+        ]
+
 class TraceCore(Module):
     def __init__(self, platform):
         self.source = source = Endpoint([('data', 8)])
@@ -223,7 +268,7 @@ class TraceCore(Module):
 
         trace_pipeline = [
             phy := ClockDomainsRenamer('trace')(TracePHY(trace_pads)),
-            ClockDomainsRenamer({'write': 'trace', 'read': 'sys'})(AsyncFIFO([('data', 128)], 512)),
+            ClockDomainsRenamer({'write': 'trace', 'read': 'sys'})(AsyncFIFO([('data', 128)], 4)),
             ByteSwap(16),
             injector := Injector(),
             Converter(128, 8),
@@ -258,6 +303,7 @@ class TraceCore(Module):
             ClockDomainsRenamer('swo')(ManchesterDecoder(16)),
             ClockDomainsRenamer('swo')(BitsToBytes()),
             ClockDomainsRenamer({'write': 'swo', 'read': 'sys'})(AsyncFIFO([('data', 8)], 4)),
+            StreamFlush(7500000),
         ]
 
         swo_stream = Endpoint([('data', 8)])
@@ -266,11 +312,16 @@ class TraceCore(Module):
 
         self.comb += swo_phy.input_signal.eq(self.swo)
 
-        # Output mux
+        # Output mux and FIFO
+        fifo = SyncFIFO([('data', 8)], 8192, buffered = True)
+
         self.comb += [
-            If(trace_active, trace_stream.connect(source)),
-            If(swo_active, swo_stream.connect(source)),
+            If(trace_active, trace_stream.connect(fifo.sink)),
+            If(swo_active, swo_stream.connect(fifo.sink)),
+            fifo.source.connect(source),
         ]
+
+        self.submodules += fifo
 
         # Indicators
         self.led_overrun = Signal()
