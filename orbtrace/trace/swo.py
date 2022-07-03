@@ -81,9 +81,17 @@ class ManchesterDecoder(Module):
 
             If(sink.valid & sink.level & ~sink.count[-1],
                 NextState('CENTER'),
-                NextValue(short_threshold, sink.count + (sink.count >> 1)),
-                NextValue(long_threshold, (sink.count << 1) + (sink.count >> 1)),
                 NextValue(source.first, 1),
+
+                # Icky fix to 'lock' 41.66MHz & 48MHz operation. This slides towards the
+                # end of a bit at 48MHz but does work OK. It does _not_ work at 49MHz!!
+                If (sink.count>6,
+                    NextValue(short_threshold, sink.count + (sink.count >> 1)),
+                    NextValue(long_threshold, ((sink.count) << 1) + (sink.count >> 1)),
+                ).Else(
+                    NextValue(short_threshold, 9),
+                    NextValue(long_threshold, 15),
+                ),                        
             ),
         )
 
