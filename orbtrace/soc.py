@@ -28,8 +28,11 @@ from .led_ctrl import LEDCtrl
 from .reset import Reset
 
 from usb_protocol.types      import USBTransferType, USBRequestType, USBStandardRequests, USBRequestRecipient, DescriptorTypes
-from usb_protocol.emitters   import DeviceDescriptorCollection
 from usb_protocol.emitters.descriptors import cdc
+
+#from usb_protocol.emitters   import DeviceDescriptorCollection
+
+from .microsoft_wcid import DeviceDescriptorCollection, PlatformDescriptorCollection, PlatformDescriptor, WindowsRequestHandler
 
 from litex.soc.interconnect import stream
 from litex.soc.interconnect.stream import Endpoint, Pipeline, AsyncFIFO, ClockDomainCrossing, Converter, Multiplexer, Demultiplexer
@@ -43,10 +46,13 @@ class USBAllocator:
         self._next_interface = 0
         self._next_in_ep     = 1
         self._next_out_ep    = 1
+        self.winusb_interfaces =[]
 
-    def interface(self):
+    def interface(self, with_winusb=True):
         n = self._next_interface
         self._next_interface += 1
+        if with_winusb:
+            self.winusb_interfaces.append(n)
         return n
 
     def in_ep(self):
@@ -93,6 +99,7 @@ class OrbSoC(SoCCore):
         # USB serial number
         self.add_usb_serialnumber()
 
+
         # USB UART
         if kwargs['uart_name'] == 'stream':
             self.add_usb_uart(self.uart)
@@ -129,6 +136,8 @@ class OrbSoC(SoCCore):
 
         # USB version interface
         self.add_usb_version()
+
+        self.add_microsoft_os_2_0_descriptors()
 
         # USB
         self.finalize_usb()
@@ -514,13 +523,21 @@ class OrbSoC(SoCCore):
         self.submodules.test_io = TestIO(signals)
 
     def add_usb_uart(self, uart):
-        comm_if = self.usb_alloc.interface()
+        comm_if = self.usb_alloc.interface(with_winusb=False)
         comm_ep = self.usb_alloc.in_ep()
 
-        data_if     = self.usb_alloc.interface()
+        data_if     = self.usb_alloc.interface(with_winusb=False)
         data_in_ep  = self.usb_alloc.in_ep()
         data_out_ep = self.usb_alloc.out_ep()
 
+        # IAD descriptor needed on windows
+        with self.usb_conf_desc.InterfaceAssociationDescriptor() as i:
+            i.bFirstInterface = 0
+            i.bInterfaceCount = 2
+            i.bFunctionClass = 2 # CDC
+            i.bFunctionSubclass = 2
+            i.bFunctionProtocol = 0
+        
         # Communications interface descriptor.
         with self.usb_conf_desc.InterfaceDescriptor() as i:
             i.bInterfaceNumber   = comm_if
@@ -662,6 +679,30 @@ class OrbSoC(SoCCore):
             (setup.request == USBStandardRequests.GET_DESCRIPTOR) & \
             (setup.value == (DescriptorTypes.STRING << 8) | self.usb_serial_idx))
 
+    def add_microsoft_os_2_0_descriptors(self):
+        platformDescriptors = PlatformDescriptorCollection()
+        with self.usb_descriptors.BOSDescriptor() as bos:
+            with PlatformDescriptor(bos, platform_collection = platformDescriptors) as platformDesc:
+                with platformDesc.DescriptorSetInformation() as descSetInfo:
+                    descSetInfo.bMS_VendorCode = 1
+
+                    with descSetInfo.SetHeaderDescriptor() as setHeader:
+                        with setHeader.SubsetHeaderConfiguration() as subsetConfig:
+                            subsetConfig.bConfigurationValue = 0
+
+
+                            for i in self.usb_alloc.winusb_interfaces:
+                                with subsetConfig.SubsetHeaderFunction() as subsetFunc0:
+                                    subsetFunc0.bFirstInterface = i
+                    
+                                    with subsetFunc0.FeatureCompatibleID() as compatID:
+                                        compatID.CompatibleID = 'WINUSB'
+                                        compatID.SubCompatibleID = ''
+
+        windowsRequestHandler = WindowsRequestHandler(platformDescriptors)
+        self.usb_control_handlers.append(windowsRequestHandler)
+
+
     def add_usb_version(self):
         # USB interface.
         if_num = self.usb_alloc.interface()
@@ -696,12 +737,15 @@ class OrbSoC(SoCCore):
         with self.usb_descriptors.DeviceDescriptor() as d:
             d.idVendor           = vid
             d.idProduct          = pid
+            d.bcdUSB             = 2.1 # Support BOS descriptors
+            d.bcdDevice          = 1.0
 
             d.iManufacturer      = "Orbcode"
             d.iProduct           = "Orbtrace Bootloader" if pid == 0x3442 else "Orbtrace Test" if pid == 0x0001 else "Orbtrace"
             d.iSerialNumber      = "N/A"
-
+            
             d.bNumConfigurations = 1
+            
 
         # Store iSerialNumber so handler can be overridden.
         self.usb_serial_idx = d.fields['iSerialNumber']
