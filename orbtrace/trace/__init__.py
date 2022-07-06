@@ -175,7 +175,7 @@ class TraceCore(Module):
 
         self.source = source = Endpoint([('data', 8)])
 
-        self.width = Signal(2)
+        self.input_format = Signal(8)
 
         # Main pipeline.
         phy = ClockDomainsRenamer('trace')(TracePHY(pads))
@@ -200,7 +200,7 @@ class TraceCore(Module):
         self.submodules += phy, fifo, byteswap, injector, converter
 
         # Config.
-        self.comb += phy.width.eq(self.width)
+        self.comb += phy.width.eq(self.input_format[:2])
 
         # Monitoring/keepalive.
         monitor = Monitor(phy.source)

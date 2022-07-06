@@ -458,7 +458,7 @@ class OrbSoC(SoCCore):
 
         self.add_usb_control_handler(handler)
 
-        self.comb += self.trace.width.eq(self.wrapper.from_amaranth(handler.width))
+        self.comb += self.trace.input_format.eq(self.wrapper.from_amaranth(handler.input_format))
 
         # Endpoint handler.
         ep = USBStreamInEndpoint(

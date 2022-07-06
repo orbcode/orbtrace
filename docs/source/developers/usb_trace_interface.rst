@@ -11,8 +11,8 @@ Control Requests
 Control requests are vendor-specific interface-directed, i.e. with ``bmRequestType = 0x41 or 0xc1``
 and the lower half of ``wIndex`` containing ``bInterfaceNumber``.
 
-Set Trace Type
-^^^^^^^^^^^^^^
+Set Input Format
+^^^^^^^^^^^^^^^^
 
 =============  ========  ======  ================  =======
 bmRequestType  bRequest  wValue  wIndex            wLength
@@ -21,16 +21,18 @@ bmRequestType  bRequest  wValue  wIndex            wLength
 =============  ========  ======  ================  =======
 
 
-=====  =======================
+=====  ==============================
 Type   Description
-=====  =======================
+=====  ==============================
 0x00   Disabled
 0x01   1-bit synchronous
 0x02   2-bit synchronous
 0x03   4-bit synchronous
-0x80   NRZ asynchronous
-0x81   Manchester asynchronous
-=====  =======================
+0x10   Manchester asynchronous (ITM)
+0x11   Manchester asynchronous (TPIU)
+0x12   NRZ asynchronous (ITM)
+0x13   NRZ asynchronous (TPIU)
+=====  ==============================
 
 Set Async Baudrate
 ^^^^^^^^^^^^^^^^^^

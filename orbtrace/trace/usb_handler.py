@@ -8,7 +8,7 @@ class TraceUSBHandler(USBRequestHandler):
 
         self.if_num = if_num
 
-        self.width = Signal(2, reset = 3)
+        self.input_format = Signal(8)
 
         self.request_done = Signal()
 
@@ -19,8 +19,8 @@ class TraceUSBHandler(USBRequestHandler):
             m.d.comb += self.send_zlp()
             m.d.comb += self.request_done.eq(1)
 
-    def handle_set_trace_type(self, m):
-        m.d.usb += self.width.eq(self.interface.setup.value)
+    def handle_set_input_format(self, m):
+        m.d.usb += self.input_format.eq(self.interface.setup.value)
 
         with m.If(self.interface.status_requested):
             m.d.comb += self.send_zlp()
@@ -66,14 +66,14 @@ class TraceUSBHandler(USBRequestHandler):
                 with m.If(setup.type == USBRequestType.VENDOR):
                     with m.Switch(setup.request):
                         with m.Case(0x01):
-                            m.next = 'SET_TRACE_TYPE'
+                            m.next = 'SET_INPUT_FORMAT'
             
             with m.State('SET_INTERFACE'):
                 self.handle_set_interface(m)
                 self.transition(m)
             
-            with m.State('SET_TRACE_TYPE'):
-                self.handle_set_trace_type(m)
+            with m.State('SET_INPUT_FORMAT'):
+                self.handle_set_input_format(m)
                 self.transition(m)
             
             with m.State('UNHANDLED'):
