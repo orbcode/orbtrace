@@ -91,3 +91,20 @@ class CRG(Module, AutoCSR):
     def add_debug(self):
         self.clock_domains.cd_debug = ClockDomain()
         self.pll2.create_clkout(self.cd_debug, 100e6)
+
+        self.add_swo()
+
+    def add_swo(self):
+        self.clock_domains.cd_swo = ClockDomain()
+        self.clock_domains.cd_swo2x = ClockDomain()
+
+        self.pll2.create_clkout(self.cd_swo2x, 250e6, margin = 0)
+
+        self.specials += [
+            Instance("CLKDIVF",
+                p_DIV     = "2.0",
+                i_CLKI    = self.cd_swo2x.clk,
+                i_RST     = ~self.pll2.locked,
+                o_CDIVX   = self.cd_swo.clk),
+            AsyncResetSynchronizer(self.cd_swo, ~self.pll2.locked | self.reset | self.rst),
+        ]

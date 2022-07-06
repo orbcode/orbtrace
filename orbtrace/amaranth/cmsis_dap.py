@@ -329,7 +329,8 @@ class CMSIS_DAP(Elaboratable):
         # Perform disconnect
         m.d.sync += [
             self.running.eq(0),
-            self.connected.eq(0)
+            self.connected.eq(0),
+            self.isJTAG.eq(1),
         ]
         m.next = 'RESPOND'
     # ----------------------------------------------------------------------------------

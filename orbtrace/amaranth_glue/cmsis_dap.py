@@ -9,7 +9,7 @@ from ..amaranth import cmsis_dap
 
 from litex.soc.interconnect.stream import Endpoint
 
-from litex.build.io import SDRInput, SDROutput, SDRTristate
+from litex.build.io import SDRInput, DDRInput, SDROutput, SDRTristate
 
 class CMSIS_DAP(Module):
     def __init__(self, pads, wrapper):
@@ -19,6 +19,7 @@ class CMSIS_DAP(Module):
         self.can = Signal()
         self.connected = Signal()
         self.running = Signal()
+        self.swo = Signal(2)
 
         dbgpins = amaranth.Record([
             ('tck_swclk', [('o', 1, DIR_FANOUT)]),
@@ -81,11 +82,26 @@ class CMSIS_DAP(Module):
             clk = wrapper.from_amaranth(dbgpins.tdi.o_clk),
         )
 
-        self.specials += SDRInput(
-            i = pads.jtdo,
-            o = wrapper.from_amaranth(dbgpins.tdo_swo.i),
-            clk = wrapper.from_amaranth(dbgpins.tdo_swo.i_clk),
+        is_jtag = wrapper.from_amaranth(dap.isJTAG)
+        jtdo_swo_clk = Signal()
+
+        self.specials += Instance('DCSC',
+            o_DCSOUT = jtdo_swo_clk,
+            i_CLK0 = wrapper.from_amaranth(dbgpins.tdo_swo.i_clk),
+            i_CLK1 = ClockSignal('swo2x'),
+            i_SEL0 = is_jtag,
+            i_SEL1 = ~is_jtag,
+            i_MODESEL = 0,
         )
+
+        self.specials += DDRInput(
+            i = pads.jtdo,
+            o1 = self.swo[0],
+            o2 = self.swo[1],
+            clk = jtdo_swo_clk,
+        )
+
+        self.comb += wrapper.from_amaranth(dbgpins.tdo_swo.i).eq(self.swo[0])
 
         if hasattr(pads, 'nrst'):
             nrst = TSTriple()
