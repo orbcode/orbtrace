@@ -1,7 +1,7 @@
 from migen import *
 from migen.genlib.cdc import MultiReg
 
-from litex.soc.interconnect.stream import Endpoint, AsyncFIFO, Pipeline, CombinatorialActor
+from litex.soc.interconnect.stream import Endpoint, AsyncFIFO, Pipeline, CombinatorialActor, Converter
 from litex.build.io import DDRInput
 
 class TracePHY(Module):
@@ -173,7 +173,7 @@ class TraceCore(Module):
 
         pads = platform.request('trace')
 
-        self.source = source = Endpoint([('data', 128)])
+        self.source = source = Endpoint([('data', 8)])
 
         self.width = Signal(2)
 
@@ -186,9 +186,18 @@ class TraceCore(Module):
 
         injector = Injector()
 
-        self.submodules += Pipeline(phy, fifo, byteswap, injector, source)
+        converter = Converter(128, 8)
 
-        self.submodules += phy, fifo, byteswap, injector
+        self.submodules += Pipeline(
+            phy,
+            fifo,
+            byteswap,
+            injector,
+            converter,
+            source,
+        )
+
+        self.submodules += phy, fifo, byteswap, injector, converter
 
         # Config.
         self.comb += phy.width.eq(self.width)

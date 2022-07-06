@@ -461,10 +461,9 @@ class OrbSoC(SoCCore):
         self.comb += self.trace.width.eq(self.wrapper.from_amaranth(handler.width))
 
         # Endpoint handler.
-        ep = USBMultibyteStreamInEndpoint(
+        ep = USBStreamInEndpoint(
             endpoint_number = ep_num,
             max_packet_size = 512,
-            byte_width = 16,
         )
         self.usb.add_endpoint(ep)
 
