@@ -40,6 +40,18 @@ TBD
 Protocols
 ---------
 
+Undefined
+^^^^^^^^^
+
+==================  ==================  ==================
+bInterfaceClass     bInterfaceSubclass  bInterfaceProtocol
+==================  ==================  ==================
+0xff                0x54                0x00
+==================  ==================  ==================
+
+Trace interfaces with undefined protocol should be used by devices not aware of the format of the data stream (e.g. when capturing raw SWO).
+In this case, the user is expected to manually configure the host software for the correct format.
+
 TPIU
 ^^^^
 

@@ -445,9 +445,9 @@ class OrbSoC(SoCCore):
             i.bInterfaceNumber   = if_num
             i.bInterfaceClass    = 0xff
             i.bInterfaceSubclass = 0x54
-            i.bInterfaceProtocol = 0x01
+            i.bInterfaceProtocol = 0x00
 
-            i.iInterface = 'Trace (TPIU)'
+            i.iInterface = 'Trace'
 
             with i.EndpointDescriptor() as e:
                 e.bEndpointAddress = 0x80 | ep_num
