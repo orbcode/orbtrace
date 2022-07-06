@@ -87,7 +87,7 @@ class Injector(Module):
         )
 
 class Monitor(Module):
-    def __init__(self, stream):
+    def __init__(self, stream, cd):
         # Exported signals.
         self.total = Signal(32)
         self.lost = Signal(16)
@@ -98,7 +98,8 @@ class Monitor(Module):
         lost = Signal(16)
         clk = Signal(2)
 
-        self.sync.trace += [
+        _sync = getattr(self.sync, cd)
+        _sync += [
             If(stream.valid,
                 total.eq(total + 1),
             ),
@@ -169,41 +170,72 @@ class Keepalive(Module):
 
 class TraceCore(Module):
     def __init__(self, platform):
-        self.clock_domains.cd_trace = ClockDomain()
-
-        pads = platform.request('trace')
-
         self.source = source = Endpoint([('data', 8)])
 
+        # Input format.
         self.input_format = Signal(8)
 
-        # Main pipeline.
-        phy = ClockDomainsRenamer('trace')(TracePHY(pads))
+        trace_active = Signal()
+        trace_width = Signal(2)
+        swo_active = Signal()
+        swo_manchester = Signal()
+        swo_nrz = Signal()
+        swo_tpiu = Signal()
 
-        fifo = ClockDomainsRenamer({'write': 'trace', 'read': 'sys'})(AsyncFIFO([('data', 128)], 512))
+        self.comb += Case(self.input_format, {
+            0x01: [
+                trace_active.eq(1),
+                trace_width.eq(1),
+            ],
+            0x02: [
+                trace_active.eq(1),
+                trace_width.eq(2),
+            ],
+            0x03: [
+                trace_active.eq(1),
+                trace_width.eq(3),
+            ],
+            0x10: [
+                swo_active.eq(1),
+                swo_manchester.eq(1),
+            ],
+            0x11: [
+                swo_active.eq(1),
+                swo_manchester.eq(1),
+                swo_tpiu.eq(1),
+            ],
+            0x12: [
+                swo_active.eq(1),
+                swo_nrz.eq(1),
+            ],
+            0x13: [
+                swo_active.eq(1),
+                swo_nrz.eq(1),
+                swo_tpiu.eq(1),
+            ],
+        })
 
-        byteswap = ByteSwap(16)
+        # Trace pipeline.
+        self.clock_domains.cd_trace = ClockDomain()
+        trace_pads = platform.request('trace')
 
-        injector = Injector()
+        trace_pipeline = [
+            phy := ClockDomainsRenamer('trace')(TracePHY(trace_pads)),
+            ClockDomainsRenamer({'write': 'trace', 'read': 'sys'})(AsyncFIFO([('data', 128)], 512)),
+            ByteSwap(16),
+            injector := Injector(),
+            Converter(128, 8),
+        ]
 
-        converter = Converter(128, 8)
+        trace_stream = Endpoint([('data', 8)])
 
-        self.submodules += Pipeline(
-            phy,
-            fifo,
-            byteswap,
-            injector,
-            converter,
-            source,
-        )
+        self.submodules += [*trace_pipeline, Pipeline(*trace_pipeline, trace_stream)]
 
-        self.submodules += phy, fifo, byteswap, injector, converter
+        # Trace config.
+        self.comb += phy.width.eq(trace_width)
 
-        # Config.
-        self.comb += phy.width.eq(self.input_format[:2])
-
-        # Monitoring/keepalive.
-        monitor = Monitor(phy.source)
+        # Trace monitoring/keepalive.
+        monitor = Monitor(phy.source, 'trace')
 
         keepalive = Keepalive()
 
@@ -214,6 +246,11 @@ class TraceCore(Module):
         ]
 
         self.submodules += monitor, keepalive
+
+        # Output mux
+        self.comb += [
+            If(trace_active, trace_stream.connect(source)),
+        ]
 
         # Indicators
         self.led_overrun = Signal()
