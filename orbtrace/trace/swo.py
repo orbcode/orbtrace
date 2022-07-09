@@ -75,13 +75,21 @@ class ManchesterDecoder(Module):
 
         short_threshold = Signal(n_bits) # 3/4 bit time
         long_threshold = Signal(n_bits)  # 5/4 bit time
+        edge_counter   = Signal(8)       # Maximum number of edges before we force a reset (8 bytes, max 2 edges = 128 count)
+
+        self.sync += If(source.ready & source.valid,
+            source.first.eq(0),
+            edge_counter.eq(edge_counter+1),
+        )
 
         fsm.act('IDLE',
             sink.ready.eq(1),
 
-            If(sink.valid & sink.level & ~sink.count[-1],
+            # Don't sync to something that's longer than we can count to (/4)
+            If(sink.valid & sink.level & (sink.count[-2:]==0),
                 NextState('CENTER'),
                 NextValue(source.first, 1),
+                NextValue(edge_counter, 0),
 
                 # Icky fix to 'lock' 41.66MHz & 48MHz operation. This slides towards the
                 # end of a bit at 48MHz but does work OK. It does _not_ work at 49MHz!!
@@ -98,6 +106,7 @@ class ManchesterDecoder(Module):
         short = Signal()
         long = Signal()
         extra_long = Signal()
+        frame_reset = Signal()
 
         capture = Signal()
 
@@ -105,6 +114,7 @@ class ManchesterDecoder(Module):
             short.eq(sink.count <= short_threshold),
             extra_long.eq(sink.count > long_threshold),
             long.eq(~short & ~extra_long),
+            frame_reset.eq(edge_counter[-1]),
         ]
 
         fsm.act('CENTER',
@@ -124,6 +134,11 @@ class ManchesterDecoder(Module):
             If(sink.valid & extra_long,
                 NextState('IDLE'),
             ),
+
+            # We got too many edges in this frame..reset and start again
+            If(frame_reset,
+                NextState('IDLE'),
+            ),
         )
 
         fsm.act('EDGE',
@@ -138,7 +153,12 @@ class ManchesterDecoder(Module):
             # Long or extra long pulse from bit edge is either end bit or error.
             If(sink.valid & (long | extra_long),
                 NextState('IDLE'),
-            )
+            ),
+
+            # We got too many edges in this frame..reset and start again
+            If(frame_reset,
+                NextState('IDLE'),
+            ),
         )
 
         self.comb += If(capture,
@@ -146,9 +166,6 @@ class ManchesterDecoder(Module):
             source.valid.eq(1),
         )
 
-        self.sync += If(source.ready & source.valid,
-            source.first.eq(0),
-        )
 
 class BitsToBytes(Module):
     def __init__(self):
