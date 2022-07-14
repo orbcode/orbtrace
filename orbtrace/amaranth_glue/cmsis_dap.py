@@ -68,13 +68,11 @@ class CMSIS_DAP(Module):
             clk = wrapper.from_amaranth(dbgpins.swdwr.o_clk),
         )
 
-        self.specials += SDRTristate(
-            io = pads.jtms,
-            i = wrapper.from_amaranth(dbgpins.tms_swdio.i),
-            o = wrapper.from_amaranth(dbgpins.tms_swdio.o),
-            oe = wrapper.from_amaranth(dbgpins.tms_swdio.oe),
-            clk = wrapper.from_amaranth(dbgpins.tms_swdio.o_clk),
-        )
+        t = TSTriple()
+        self.specials += t.get_tristate(pads.jtms)
+        wrapper.connect(t.oe, dbgpins.tms_swdio.oe)
+        wrapper.connect(t.o, dbgpins.tms_swdio.o)
+        wrapper.connect(t.i, dbgpins.tms_swdio.i)        
 
         self.specials += SDROutput(
             o = pads.jtdi,

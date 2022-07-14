@@ -411,7 +411,7 @@ class CMSIS_DAP(Elaboratable):
 
             # Setup to have control over swdo, swclk and swwr (set for output), with clocks of 1 clock cycle
             self.dbgif.dwrite.eq(0),
-            self.dbgif.pinsin.eq(0b0001_0011_0001_0000),
+            self.dbgif.pinsin.eq(0b0000_0011_0001_0011),
             self.swjbcount.eq(0),
             self.dbgif.command.eq(CMD_PINS_WRITE)
             ]
@@ -436,7 +436,9 @@ class CMSIS_DAP(Elaboratable):
             # Write the data bit -----------------------------------------------------------------------
             with m.Case(1):
                 m.d.sync += [
-                    self.dbgif.pinsin[0:2].eq(Cat(C(0,1),self.tfrData.bit_select(0,1))),
+                    self.dbgif.pinsin[1].eq(self.tfrData.bit_select(0,1)),
+                    self.dbgif.pinsin[12].eq(1),
+                    self.dbgif.pinsin[0].eq(0),
                     self.tfrData.eq(Cat(C(1,0),self.tfrData[1:8])),
                     self.transferSCount.eq(self.transferSCount-1),
                     self.dbgif.go.eq(1),

@@ -16,13 +16,12 @@ module swdIF (
 
 	// Downwards interface to the SWD pins ------------------------------------------------------------
                 input             swdi,                                              // DIO pin from target
-                output            swdo,                                                // DIO pin to target
+                output reg        swdo,                                                // DIO pin to target
                 input             falling,                        // Flag indicating falling edge to target
                 input             rising,                          // Flag indicating rising edge to target
                 input             swclk_in,                                                // Input swclock
                 output            swclk_out,                                                   // swclk out
-                output            swwr,                                             // Direction of DIO pin
-
+                output reg        swwr,                                             // Direction of DIO pin
         // Configuration ----------------------------------------------------------------------------------
                 input [1:0]       turnaround,                                 // Clock ticks per turnaround
                 input             dataphase,                         // Does a dataphase follow WAIT/FAULT?
@@ -37,8 +36,9 @@ module swdIF (
                 output reg [31:0] dread,                                           // Data read from target
                 output reg        perr,                                      // Indicator of a parity error
                 input             go,                                                            // Trigger
-                output            idle                                                          // Response
-		);
+                output            idle,                                                         // Response
+	        output reg        canary                                                    // Debug canary
+	      );
 
    // Internals ===========================================================================================
    reg [2:0]                      swd_state;                                    // current state of machine
@@ -51,13 +51,12 @@ module swdIF (
 
    // States of the reception process
    parameter ST_IDLE         = 0;
-   parameter ST_LINE_PREPARE = 1;
-   parameter ST_HDR_TX       = 2;
-   parameter ST_TRN1         = 3;
-   parameter ST_ACK          = 4;
-   parameter ST_TRN2         = 5;
-   parameter ST_DATA         = 6;
-   parameter ST_COOLING      = 7;
+   parameter ST_HDR_TX       = 1;
+   parameter ST_TRN1         = 2;
+   parameter ST_ACK          = 3;
+   parameter ST_TRN2         = 4;
+   parameter ST_DATA         = 5;
+   parameter ST_COOLING      = 6;
 
    // Elements of the transmission frame
    parameter PROT_HEAD_END   = 7;
@@ -70,9 +69,9 @@ module swdIF (
    parameter PROT_EOF        = 47;
 
    // Maintain a frame ready to go...
-   //                   46    45..13   12   11..9   8     7     6
-   //                 Parity   Data     T   Ack    T    Park  Stop
-   wire [46:0] bits = { par,  dwrite, 1'b0, 3'b0, 1'b0, 1'b1, 1'b0,
+   //                   47      46    45..13   12  11..9   8     7     6
+   //                   EOF   Parity   Data     T   Ack    T    Park  Stop
+   wire [47:0] bits = { 1'b0,   par,  dwrite, 1'b0, 3'b0, 1'b0, 1'b1, 1'b0,
    //                                   5
    //                                Parity
                         apndp^rnw^addr32[1]^addr32[0],
@@ -80,42 +79,37 @@ module swdIF (
    //                      A3         A2      RnW  APnDP  Start
                         addr32[1], addr32[0], rnw, apndp, 1'b1 };
 
-   // Things sent back to caller...
+
    assign idle      = (swd_state==ST_IDLE);
-   assign swdo      = (idle || (bitcount==PROT_EOF) || (swd_state==ST_LINE_PREPARE))?0:bits[bitcount];
-   assign swclk_out = (idle || (swd_state==ST_LINE_PREPARE))?1:swclk_in;
-   assign swwr      = (
-                       ((swd_state!=ST_IDLE) && (bitcount<PROT_TRN1)) ||                          // Header
-                       ((~rnw) && (bitcount>PROT_TRN2) ||                          // Writing Data & Parity
-			(bitcount>PROT_PAR))                                   // End of the frame, cooling
-                      );
+   assign swclk_out = idle?1:swclk_in;
 
    always @(posedge clk)
      begin
+	swdo      <= bits[bitcount];
+	swwr      <= (
+		      ((swd_state!=ST_IDLE) && (bitcount<PROT_TRN1)) ||                          // Header
+		      ((~rnw) && (bitcount>PROT_TRN2) ||                          // Writing Data & Parity
+		       (bitcount>PROT_PAR-1))                                 // End of the frame, cooling
+		      );
+	
         if (rising)
           begin
+             bitcount <= bitcount+1;                                                            // Next bit
              rd  <= { swdi, rd[31:1] };                          // Keep a sliding frame under construction
-             bitcount <= (bitcount!=PROT_EOF)?bitcount+1:bitcount;                              // Next bit
 
              case (swd_state)
 	       // =========================================================================================
                ST_IDLE: // Idle waiting for something to happen ===========================================
                  begin
+                    bitcount  <= 0;
+		    
                     if (go)                                                  // Request to start a transfer
                       begin
-                         bitcount  <= 0;                                       // Index through the tx bits
-			 swd_state <= ST_LINE_PREPARE;                         // Ensure a stable 0 on line
+			 swd_state <= ST_HDR_TX;
                          perr      <= 0;                                        // Clear any previous error
                          par       <= 0;                                    // and clear accumulated parity
                       end // if (go)
                  end
-
-	       // =========================================================================================
-	       ST_LINE_PREPARE: // Extra bit time to establish SWD<=0 =====================================
-		 begin
-		    bitcount  <= 0;
-		    swd_state <= ST_HDR_TX;                                       // Send the packet header
-		 end
 
 	       // =========================================================================================
                ST_HDR_TX: // Sending the packet header ====================================================
@@ -131,9 +125,9 @@ module swdIF (
                ST_TRN1: // Performing turnaround ==========================================================
                  begin
                     spincount<=spincount-1;                                             // Turn in progress
-
-		    // Note we're not using 'bitcount' in this state
-                    if (!spincount)
+		    bitcount <= PROT_TRN1;
+		    
+                    if (spincount==0)
 		      begin
 			 bitcount  <= PROT_ACK;                              // ... and leave the TRN state
 			 swd_state <= ST_ACK;                                      // .. go collect the ACK
@@ -162,7 +156,7 @@ module swdIF (
                          else     // Wasn't good, give up and return idle, via cooloff
                            begin
                               bitcount  <= PROT_EOF;
-                              spincount <= dataphase?33:2;                                // Extended cool?
+                              spincount <= dataphase?34:2;                                // Extended cool?
                               swd_state <= ST_COOLING;                                   // Go and cool off
                            end // else: !if({swdi,rd[31:30]}==3'b001)
                       end // if (bitcount==PROT_ACK_END)
@@ -173,8 +167,7 @@ module swdIF (
                  begin
                     spincount <= spincount - 1;                                   // Click through the turn
 		    bitcount  <= PROT_DATA;                                      // ...and collect databits
-
-                    if (!spincount)
+                    if (spincount==0)
 		      swd_state <= ST_DATA;                                                 // to dataphase
                  end
 
@@ -187,10 +180,10 @@ module swdIF (
 
 		    if (bitcount==PROT_PAR)
                       begin
-                         if (rnw)
-			   perr    <= par;                                              // Report any error
                          spincount <= rnw?turnaround:idleCycles;
                          swd_state <= ST_COOLING;
+                         if (rnw)
+			   perr    <= par;                                              // Report any error
 		      end
                  end // case: ST_DATA
 
@@ -198,10 +191,15 @@ module swdIF (
                ST_COOLING: // Cooling the link before shutting it =========================================
                  begin
                     spincount <= spincount-1;                                     // Click down the cooling
-                    if (!spincount)
-                      swd_state <= ST_IDLE;                                        // ...and return to idle
+		    bitcount  <= PROT_EOF;
+                    if (spincount==0)
+		      swd_state <= ST_IDLE;                                        // ...and return to idle
                  end
 
+	       // =========================================================================================
+	       default: // Anything else ==================================================================
+		 swd_state <= ST_IDLE;
+	       
              endcase // case (swd_state) ==================================================================
           end // if (rising)
      end // always @ (posedge clk)
