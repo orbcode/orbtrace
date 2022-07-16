@@ -5,7 +5,12 @@
 // swdIF
 // =====
 //
-// Working from ARM Debug Interface Architecture Specification ADIv5.0 to ADIv5.2
+// Working from ARM Debug Interface Architecture Specification ADIv5.0 to ADIv5.2.
+// Timing is compliant to Section 5.2 (Pg 5.3) of ARM DUI 0517H which specifies
+// 10ns<Thigh<500us and 10ns<Tlow<500us, an output skew from SWDIO to SWDCLK of
+// +/-5ns, a minimum setup time of 4ns and minimum hold time of 1ns at rising
+// edge of SWDCLK. Our data are written at falling edge of SWDCLK and read at rising.
+//
 // Modelled on structure from DAPLink implementation at
 // // https://github.com/ARMmbed/DAPLink which in Apache 2.0 Licence.
 // This gateware uses (obviously!) uses no code from DAPLink and is under BSD licence.
@@ -71,7 +76,7 @@ module swdIF (
    // Maintain a frame ready to go...
    //                   47      46    45..13   12  11..9   8     7     6
    //                   EOF   Parity   Data     T   Ack    T    Park  Stop
-   wire [47:0] bits = { 1'b0,   par,  dwrite, 1'b0, 3'b0, 1'b0, 1'b1, 1'b0,
+   wire [47:0] bits = { 1'b0,   par,  dwrite, 1'b0, 3'b0, 1'b1, 1'b1, 1'b0,
    //                                   5
    //                                Parity
                         apndp^rnw^addr32[1]^addr32[0],
@@ -85,12 +90,16 @@ module swdIF (
 
    always @(posedge clk)
      begin
-	swdo      <= bits[bitcount];
-	swwr      <= (
-		      ((swd_state!=ST_IDLE) && (bitcount<PROT_TRN1)) ||                          // Header
-		      ((~rnw) && (bitcount>PROT_TRN2) ||                          // Writing Data & Parity
-		       (bitcount>PROT_PAR-1))                                 // End of the frame, cooling
-		      );
+
+	if (falling)
+	  begin
+	     swdo      <= bits[bitcount];
+	     swwr      <= (
+			   ((swd_state!=ST_IDLE) && (bitcount<PROT_TRN1)) ||                      // Header
+			   ((~rnw) && (bitcount>PROT_TRN2) ||                      // Writing Data & Parity
+			    (bitcount>PROT_PAR-1))                             // End of the frame, cooling
+			   );
+	  end
 	
         if (rising)
           begin
