@@ -176,8 +176,8 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
    reg                            cdc_go;                                        // Clock domain crossed go
    reg [2:0] 			  rst_filter;                                // Bounce removed reset signal
    reg                            JTAG_trans_os;                  // If there is a JTAG transaction pending
-   wire	                          fallingedge;                                    // This is a falling edge
-   wire	                          risingedge;                                      // This is a rising edge
+   reg 	                          fallingedge;                                    // This is a falling edge
+   reg 	                          risingedge;                                      // This is a rising edge
 
    reg [(CDIV_LOG2-1):0]          clkDiv;                             // Divisor per clock change to target
 
@@ -233,12 +233,13 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
    reg [1:0]                      jtag_cmd;
 
    // Pins driven by pin_write (MODE_SWJ)
-   wire                           pinw_nreset = pinsin[8+7]?pinsin[7]:1;
-   wire                           pinw_tdi    = pinsin[8+2]?pinsin[2]:1;
-   wire                           pinw_swwr   = pinsin[8+4]?pinsin[4]:0;
-   wire                           pinw_swdo   = pinsin[8+1]?pinsin[1]:0;
+   reg                            pinw_nreset;
+   reg                            pinw_tdi;
+   reg                            pinw_swwr;
+   reg                            pinw_swdo;
+   wire                           pinw_swclk;
 
-   reg                            pinw_swclk;
+   // The master clock
    reg                            root_tgtclk;
 
    // Pins driven by local
@@ -265,7 +266,7 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
    assign tck_swclk     = ((dbg_state==ST_DBG_IDLE) || (dbg_state==ST_DBG_WAIT_INFERIOR_START) || (active_mode==MODE_SWJ))?pinw_swclk
 			  :(active_mode==MODE_SWD)?swd_swclk
 			  :(active_mode==MODE_JTAG)?jtag_tck
-			  :local_tgtclk;
+			  :root_tgtclk;
 
    assign tgt_reset_pin = ~((active_mode==MODE_SWJ)?pinw_nreset:(dbg_state!=ST_DBG_RESETTING));
                           //   nReset/nSRST       --   nTRST   --    TDO     TDI  SWDIO   SWCLK
@@ -341,16 +342,14 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
               .idle(jtag_idle)
 	      );
 
-   assign risingedge  = ((~root_tgtclk) && (cdivcount==0));
-   assign fallingedge = ((root_tgtclk)  && (cdivcount==0));
-
+   assign pinw_swclk = pinsin[8+0] ?pinsin[0]:1'b1;
+   
    ////////////////////////////////////////////////////////////////////////////////////////////////////////
    always @(posedge clk, posedge rst)
 
      begin
 	if (rst)
 	  begin
-             pinw_swclk  <= 1;
              cdivcount   <= 1;
              clkDiv      <= DEFAULT_IF_TICKS_PER_CLK;
              rst_timeout <= DEFAULT_RST_TIMEOUT_USEC;
@@ -365,12 +364,24 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
              cdc_go      <= go;
 	     rst_filter  <= {rst_filter[1],rst_filter[0],tgt_reset_state};
 
+	     // Deal with any immediate writes
+	     pinw_nreset <= pinsin[8+7]?pinsin[7]:1;
+	     pinw_tdi    <= pinsin[8+2]?pinsin[2]:1;
+	     pinw_swwr   <= pinsin[8+4]?pinsin[4]:0;
+	     pinw_swdo   <= pinsin[8+1]?pinsin[1]:0;
+	     
              // Run the clock, and edge detection
              cdivcount   <= cdivcount?cdivcount-1:clkDiv;
-
+	     risingedge  <= 0;
+	     fallingedge <= 0;
+	     
 	     if (cdivcount==0)
+	       begin
+		  risingedge  <= ~root_tgtclk;
+		  fallingedge <= root_tgtclk;
 		  root_tgtclk <= ~root_tgtclk;
-
+	       end
+	     
              // The usecs counter can run all of the time, it's independent
              usecsdiv<=usecsdiv?usecsdiv-1:TICKS_PER_USEC-1;
 
@@ -387,12 +398,10 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
                       perr <= 0;
                       case(command)
                         CMD_PINS_WRITE: // Write pins specified in call -----------------------------------
-                          if (cdivcount==0)
+                          if (fallingedge)
 			    begin
 			       ir <= JTAG_UNKNOWN;
                                active_mode <= MODE_SWJ;
-
-                               pinw_swclk <= pinsin[8+0] ?pinsin[0]:1'b1;
 
                                if (dwrite)
 				 begin
@@ -455,6 +464,7 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
 			       ir             <= JTAG_UNKNOWN;
                                state_step     <= 0;
                                modeshift      <= 32'h0000e79e;
+			       local_swdo     <= 1;
                                dbg_state      <= ST_DBG_ESTABLISH_MODE;
                             end
 
@@ -488,7 +498,6 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
                           begin
                              commanded_mode <= MODE_LOCAL;
 			     ir             <= JTAG_UNKNOWN;
-                             pinw_swclk     <= 1'b1;
                              dbg_state      <= ST_DBG_WAIT_GOCLEAR;
                           end
 

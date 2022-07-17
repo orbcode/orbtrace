@@ -6,6 +6,9 @@
 // ======
 //
 // Working from ARM Debug Interface Architecture Specification ADIv5.0 to ADIv5.2
+// Timing is compliant to Section 3.3 (Pg 3.6) of ARM DUI 0517H which specifies
+// TCK Low and High 50ns-500us. TDO to TCK rising setup min of 15ns, TDO hold of 5ns min,
+// TDI and TMS valid for minimum of 6ns from TCK falling.
 // Modelled on structure from DAPLink implementation at
 // // https://github.com/ARMmbed/DAPLink which in Apache 2.0 Licence.
 // This gateware uses (obviously!) uses no code from DAPLink and is under BSD licence.
@@ -19,7 +22,7 @@ module jtagIF (
         input 			  tdo,                                        // Test Data Out from targets
         output reg 		  tdi,                                           // Test Data In to targets
         output reg 		  tms,                                       // Test Mode Select to targets
-        output reg   	          tck,                                         // Test clock out to targets
+        output   	          tck,                                         // Test clock out to targets
 
 	// Upwards interface to command controller ========================================================
         input [2:0] 	          dev,                                  // Device in chain we're talking to
@@ -48,11 +51,8 @@ module jtagIF (
    reg [3:0]                      next_state;                       // State to switch to after current one
    reg [5:0]                      tmsbits;                                    // Number of TMS bits to send
    reg [4:0]                      windex;                                // Index into bit sequences in/out
-   reg [4:0] 			  nwindex;                          // Next index into bit sequences in/out
    reg [2:0]                      tmscount;                              // Counter for tms bits being sent
-   reg [2:0]                      ntmscount;                        // Next counter for tms bits being sent
    reg [5:0]                      tdxcount;                      // Counter for data bits being transferred
-   reg [5:0] 			  ntdxcount;                                  // Next counter for data bits
    reg [2:0]                      devcount;                       // Counter for number of devices in chain
 
    // Commands from layer above
@@ -70,9 +70,6 @@ module jtagIF (
    parameter ST_JTAG_TRANSFER    = 6;  // Performing Data Transfer
    
    assign idle      = (jtag_state==ST_JTAG_IDLE);
-   assign ntmscount = tmscount-1;
-   assign ntdxcount = tdxcount+1;
-   assign nwindex   = windex+1;
 
 // ========================================================================================================
 `ifndef SYNTHESIS // ======================================================================================
@@ -100,10 +97,10 @@ module jtagIF (
 	 end
 `endif // =================================================================================================
 
+   assign tck = (idle)?1'b1:jtagclk_in;
+
    always @(posedge clk)
      begin
-	tck <= (idle)?1'b1:jtagclk_in;
-
         case (jtag_state)
 	  // ==============================================================================================
           ST_JTAG_IDLE: // Idle waiting for something to happen ===========================================
@@ -170,8 +167,8 @@ module jtagIF (
 	       
 	       if (rising)  // Read Device -> Host --------------------------------------------------------
 		 begin
-		    tdxcount <= ntdxcount;
-		    windex   <= nwindex;
+		    tdxcount <= tdxcount+1;
+		    windex   <= windex+1;
 		    
 		    case (tdxcount)
 		      0: ack[0]<=tdo;
@@ -184,8 +181,7 @@ module jtagIF (
 			   // If ack is wait then abort
 			   if ({tdo,ack[1],ack[0]}!=2)
 			     begin
-				tmsbits <= 6'b000110; //000011;
-				// tmscount <= 3;
+				tmsbits <= 6'b000110;
 				jtag_state <= ST_JTAG_TMSOUT;
 			     end
 			end
@@ -214,7 +210,7 @@ module jtagIF (
 	       
 	       if (rising)
 		 begin
-		    tdxcount <= ntdxcount;
+		    tdxcount <= tdxcount+1;
 		    dread[tdxcount] <= tdo;
 		    
 		    // For ID read it's always 32 bits...
@@ -259,7 +255,7 @@ module jtagIF (
 	       
 	       if (rising)
 		 begin
-		    tdxcount <= ntdxcount;
+		    tdxcount <= tdxcount+1;
 		    
 		    if ( tdxcount[4:0]+1 == irlenx[ 5*devcount +:5 ] )
 		      
@@ -280,8 +276,8 @@ module jtagIF (
 	    begin
 	       if (falling)
 		 begin
-		    tmscount <= ntmscount;
-		    tms      <= tmsbits[ntmscount];
+		    tmscount <= tmscount-1;
+		    tms      <= tmsbits[tmscount-1];
 		 end
 	       if (rising)
 		 begin

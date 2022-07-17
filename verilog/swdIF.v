@@ -86,18 +86,25 @@ module swdIF (
 
 
    assign idle      = (swd_state==ST_IDLE);
-   assign swclk_out = idle?1:swclk_in;
+   assign swclk_out = swclk_in;
 
    always @(posedge clk)
      begin
-
-	if (falling)
+	// If we are moving to a driven state then switch on rising edge to be faster
+	if (falling || rising)
 	  begin
 	     swdo      <= bits[bitcount];
+	     // The inclusion of 'go' here is to pump prime swwr since it's quite slow
 	     swwr      <= (
-			   ((swd_state!=ST_IDLE) && (bitcount<PROT_TRN1)) ||                      // Header
-			   ((~rnw) && (bitcount>PROT_TRN2) ||                      // Writing Data & Parity
-			    (bitcount>PROT_PAR-1))                             // End of the frame, cooling
+			   // Header
+			   ((swd_state!=ST_IDLE) && (bitcount<PROT_TRN1)) ||
+			   ((swd_state==ST_IDLE) && go && rising)  ||
+
+			   // Writing Data & Parity
+			   ((~rnw) && ((bitcount==PROT_TRN2 && rising) || (bitcount>PROT_TRN2)))  ||
+
+			   // End of the frame, cooling
+			   (((bitcount==PROT_PAR) && rising) || (bitcount>PROT_PAR))
 			   );
 	  end
 	
@@ -202,7 +209,10 @@ module swdIF (
                     spincount <= spincount-1;                                     // Click down the cooling
 		    bitcount  <= PROT_EOF;
                     if (spincount==0)
-		      swd_state <= ST_IDLE;                                        // ...and return to idle
+		      begin
+			 bitcount <= 0;
+			 swd_state <= ST_IDLE;                                     // ...and return to idle
+		      end
                  end
 
 	       // =========================================================================================
