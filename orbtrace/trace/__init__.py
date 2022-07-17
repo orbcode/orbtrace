@@ -300,7 +300,7 @@ class TraceCore(Module):
         swo_pipeline = [
             swo_phy := ClockDomainsRenamer('swo2x')(PulseLengthCapture(16)),
             ClockDomainsRenamer({'write': 'swo2x', 'read': 'swo'})(AsyncFIFO([('count', 16), ('level', 1)], 4)),
-            ClockDomainsRenamer('swo')(ManchesterDecoder(16)),
+            swo_decoder := ClockDomainsRenamer('swo')(ManchesterDecoder(16)),
             ClockDomainsRenamer('swo')(BitsToBytes()),
             ClockDomainsRenamer({'write': 'swo', 'read': 'sys'})(AsyncFIFO([('data', 8)], 4)),
             StreamFlush(7500000),
@@ -312,16 +312,9 @@ class TraceCore(Module):
 
         self.comb += swo_phy.input_signal.eq(self.swo)
 
-        # Output mux and FIFO
-        fifo = SyncFIFO([('data', 8)], 8192, buffered = True)
-
-        self.comb += [
-            If(trace_active, trace_stream.connect(fifo.sink)),
-            If(swo_active, swo_stream.connect(fifo.sink)),
-            fifo.source.connect(source),
-        ]
-
-        self.submodules += fifo
+        # SWO monitoring.
+        swo_monitor = Monitor(swo_decoder.source, 'swo')
+        self.submodules += swo_monitor
 
         # Indicators
         self.led_overrun = Signal()
@@ -332,11 +325,28 @@ class TraceCore(Module):
         self.submodules.data_indicator = Indicator(monitor.total, 7500000)
         self.submodules.clk_indicator = Indicator(monitor.clk, 7500000)
 
+        self.submodules.swo_overrun_indicator = Indicator(swo_monitor.lost, 7500000)
+        self.submodules.swo_data_indicator = Indicator(swo_monitor.total, 7500000)
+
+        # Output mux and FIFO
+        fifo = SyncFIFO([('data', 8)], 8192, buffered = True)
+
         self.comb += [
-            self.led_overrun.eq(self.overrun_indicator.out),
-            self.led_data.eq(self.data_indicator.out),
-            self.led_clk.eq(self.clk_indicator.out),
+            If(trace_active,
+                trace_stream.connect(fifo.sink),
+                self.led_overrun.eq(self.overrun_indicator.out),
+                self.led_data.eq(self.data_indicator.out),
+                self.led_clk.eq(self.clk_indicator.out),
+            ),
+            If(swo_active,
+                swo_stream.connect(fifo.sink),
+                self.led_overrun.eq(self.swo_overrun_indicator.out),
+                self.led_data.eq(self.swo_data_indicator.out),
+            ),
+            fifo.source.connect(source),
         ]
+
+        self.submodules += fifo
 
         # Add verilog sources.
         platform.add_source('verilog/traceIF.v') # TODO: make sure the path is correct
