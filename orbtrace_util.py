@@ -10,6 +10,17 @@ def parse_power(value):
 
     return float(value)
 
+input_formats = {
+    'off': 0x00,
+    '1': 0x01,
+    '2': 0x02,
+    '4': 0x03,
+    'manchester': 0x10,
+    'manchester_tpiu': 0x11,
+    'nrz': 0x12,
+    'nrz_tpiu': 0x13,
+}
+
 parser = argparse.ArgumentParser()
 
 parser_discovery = parser.add_argument_group('Device discovery')
@@ -18,7 +29,7 @@ parser_discovery.add_argument('--pid', type = lambda x: int(x, 16), default = 0x
 parser_discovery.add_argument('--serial', help = 'Select serial number')
 
 parser_actions = parser.add_argument_group('Actions')
-parser_actions.add_argument('--width', type = int, choices = [1, 2, 4], help = 'Set trace width')
+parser_actions.add_argument('--input-format', choices = input_formats, help = 'Set trace input format')
 parser_actions.add_argument('--vtref', type = parse_power, help = 'Set VTREF')
 parser_actions.add_argument('--vtpwr', type = parse_power, help = 'Set VTPWR')
 
@@ -48,12 +59,10 @@ class Orbtrace:
             if setting.getSubClass() == ord('P'):
                 self.power_if = setting.getNumber()
     
-    def trace_set_width(self, width):
+    def trace_set_input_format(self, format):
         assert self.trace_if is not None
 
-        type = {1: 1, 2: 2, 4: 3}[width]
-
-        self.handle.controlWrite(0x41, 0x01, type, self.trace_if, b'')
+        self.handle.controlWrite(0x41, 0x01, input_formats[format], self.trace_if, b'')
 
     def power_set_enable(self, channel, enable):
         assert self.power_if is not None
@@ -95,8 +104,8 @@ with usb1.USBContext() as context:
 
     orbtrace = Orbtrace(devices[0])
 
-    if args.width:
-        orbtrace.trace_set_width(args.width)
+    if args.input_format:
+        orbtrace.trace_set_input_format(args.input_format)
 
     if args.vtref:
         if args.vtref in ['off', 'on']:
