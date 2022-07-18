@@ -20,6 +20,8 @@ from .amaranth_glue.dfu import DFUHandler
 
 from .usb_serialnumber import USBSerialNumberHandler
 
+from .cdc_acm import ACMRequestHandler
+
 from .flash_uid import FlashUID
 from .flashwriter import FlashWriter
 
@@ -600,6 +602,10 @@ class OrbSoC(SoCCore):
         pipeline.comb += in_ep.sink.last.eq(1)
 
         self.submodules += in_cdc, out_cdc, pipeline
+
+        # Control request handler.
+        handler = ACMRequestHandler(comm_if)
+        self.add_usb_control_handler(handler)
 
     def add_usb_bridge(self):
         mem_request_handler = MemRequestHandler()
