@@ -1,7 +1,7 @@
 USB Power Interface
 ===================
 
-The trace interface is identified by ``bInterfaceClass = 0xff`` and ``bInterfaceSubclass = 0x50 ('P')``.
+The power interface is identified by ``bInterfaceClass = 0xff`` and ``bInterfaceSubclass = 0x50 ('P')``.
 
 Control Requests
 ----------------

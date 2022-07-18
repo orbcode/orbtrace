@@ -1,3 +1,5 @@
+.. _usb_trace_interface:
+
 USB Trace Interface
 ===================
 
