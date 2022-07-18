@@ -3,10 +3,11 @@ from usb_protocol.types import USBRequestType, USBStandardRequests, USBRequestRe
 from luna.gateware.usb.usb2.request import USBRequestHandler
 
 class TraceUSBHandler(USBRequestHandler):
-    def __init__(self, if_num):
+    def __init__(self, if_num, proxy_if_num):
         super().__init__()
 
         self.if_num = if_num
+        self.proxy_if_num = proxy_if_num
 
         self.input_format = Signal(8)
 
@@ -41,7 +42,7 @@ class TraceUSBHandler(USBRequestHandler):
         with m.If(self.request_done):
             m.next = 'IDLE'
 
-        targeting_if = (setup.recipient == USBRequestRecipient.INTERFACE) & (setup.index[:8] == self.if_num)
+        targeting_if = (setup.recipient == USBRequestRecipient.INTERFACE) & ((setup.index[:8] == self.if_num) | (setup.index[:8] == self.proxy_if_num))
 
         with m.If(setup.received & targeting_if):
             m.next = 'DISPATCH'

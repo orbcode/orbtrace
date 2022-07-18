@@ -458,8 +458,19 @@ class OrbSoC(SoCCore):
                 e.bEndpointAddress = 0x80 | ep_num
                 e.wMaxPacketSize   = 512
 
+        # Control proxy interface.
+        proxy_if_num = self.usb_alloc.interface()
+
+        with self.usb_conf_desc.InterfaceDescriptor() as i:
+            i.bInterfaceNumber   = proxy_if_num
+            i.bInterfaceClass    = 0xff
+            i.bInterfaceSubclass = 0x58
+            i.bInterfaceProtocol = 0x00
+
+            i.iInterface = 'Control Proxy'
+
         # Control handler.
-        handler = TraceUSBHandler(if_num)
+        handler = TraceUSBHandler(if_num, proxy_if_num)
 
         self.add_usb_control_handler(handler)
 

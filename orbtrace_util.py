@@ -33,12 +33,16 @@ parser_actions.add_argument('--input-format', choices = input_formats, help = 'S
 parser_actions.add_argument('--vtref', type = parse_power, help = 'Set VTREF')
 parser_actions.add_argument('--vtpwr', type = parse_power, help = 'Set VTPWR')
 
+parser_options = parser.add_argument_group('Options')
+parser_options.add_argument('--proxy', action = 'store_true', help = 'Use proxy interface')
+
 args = parser.parse_args()
 
 class Orbtrace:
     def __init__(self, device):
         self.trace_if = None
         self.power_if = None
+        self.proxy_if = None
 
         self.read_config(device)
 
@@ -58,11 +62,15 @@ class Orbtrace:
 
             if setting.getSubClass() == ord('P'):
                 self.power_if = setting.getNumber()
-    
-    def trace_set_input_format(self, format):
-        assert self.trace_if is not None
 
-        self.handle.controlWrite(0x41, 0x01, input_formats[format], self.trace_if, b'')
+            if setting.getSubClass() == ord('X'):
+                self.proxy_if = setting.getNumber()
+    
+    def trace_set_input_format(self, format, use_proxy = False):
+        if_num = self.proxy_if if use_proxy else self.trace_if
+        assert if_num is not None
+
+        self.handle.controlWrite(0x41, 0x01, input_formats[format], if_num, b'')
 
     def power_set_enable(self, channel, enable):
         assert self.power_if is not None
@@ -105,7 +113,7 @@ with usb1.USBContext() as context:
     orbtrace = Orbtrace(devices[0])
 
     if args.input_format:
-        orbtrace.trace_set_input_format(args.input_format)
+        orbtrace.trace_set_input_format(args.input_format, args.proxy)
 
     if args.vtref:
         if args.vtref in ['off', 'on']:
