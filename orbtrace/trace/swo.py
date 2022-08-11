@@ -193,3 +193,63 @@ class BitsToBytes(Module):
                 sr.eq(0x100),
             )
         ]
+
+class NRZDecoder(Module):
+    def __init__(self, n_bits):
+        self.sink = sink = Endpoint([('count', n_bits), ('level', 1)])
+        self.source = source = Endpoint([('data', 1)])
+        self.bitlen  = Signal(16, reset = 8000)
+
+        acc  = Signal(n_bits + 4 + 4)
+
+        self.comb += [
+            sink.ready.eq(acc < self.bitlen),
+            source.valid.eq(acc >= self.bitlen),
+        ]
+
+        self.sync += [
+            # No bits left in accumulator, receive a new count.
+            If(sink.ready & sink.valid,
+                acc.eq((sink.count << 4) + (self.bitlen >> 1)),
+                source.data.eq(sink.level),
+            ).Elif(source.valid & source.ready,
+                acc.eq(acc - self.bitlen), # Subtract one bit length.
+            )
+        ]
+
+class UARTDecoder(Module):
+    def __init__(self):
+        self.sink = sink = Endpoint([('data', 1)])
+        self.source = source = Endpoint([('data', 8)])
+
+        self.submodules.fsm = fsm = FSM()
+
+        sr = Signal(10)
+
+        self.comb += [
+            source.valid.eq(sr[0] & sr[9]),
+            source.data.eq(sr[1:]),
+            sink.ready.eq(~source.valid),
+        ]
+
+        fsm.act('WAITSTART',
+            If(sink.valid & sink.ready & (sink.data == 0),
+                NextValue(sr, 0x200),
+                NextState('GETBITS'),
+            ),
+        )
+
+        fsm.act('GETBITS',
+            If((sink.valid & sink.ready),
+                NextValue(sr, Cat(sr[1:], sink.data)),
+            ),
+            If (sr[0],
+                NextState('WAITSTART'),
+            ),
+        )
+
+        self.sync += [
+            If(source.valid & source.ready,
+                sr.eq(0x200),
+            )
+        ]
