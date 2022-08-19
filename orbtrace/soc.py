@@ -1,4 +1,5 @@
 import subprocess
+import uuid
 
 from orbtrace.usb_serialnumber import USBSerialNumberHandler
 from orbtrace.test_io import TestIO
@@ -43,18 +44,42 @@ from litex.soc.interconnect.axi import AXILiteInterface, AXILiteClockDomainCross
 from litespi.phy.generic import LiteSPIPHY
 from litespi import LiteSPI
 
+
+
+DEVICE_INTERFACE_GUID_BASE = uuid.UUID('{1c451fbb-0000-426f-bef2-93a89eb65cba}')
+
+
 class USBAllocator:
     def __init__(self):
         self._next_interface = 0
         self._next_in_ep     = 1
         self._next_out_ep    = 1
-        self.winusb_interfaces =[]
+        self.winusb_interfaces = []
+        self.device_interface_guids = {}
 
-    def interface(self, with_winusb=True):
+    def interface(self, with_winusb=True, guid_discriminator=None):
         n = self._next_interface
         self._next_interface += 1
         if with_winusb:
+            if guid_discriminator is None:
+                raise RuntimeError('Specify guid_discriminator for WinUSB-capable interfaces.')
+
             self.winusb_interfaces.append(n)
+
+        if guid_discriminator is not None:
+            if not with_winusb:
+                raise RuntimeError('guid_discriminator is Windows-specific. There is no reason to apply to non-WinUSB interfaces')
+
+            assert guid_discriminator <= 0xFFFF
+
+            fields = list(DEVICE_INTERFACE_GUID_BASE.fields)
+            fields[1] = guid_discriminator
+            new_uuid = uuid.UUID(fields=fields)
+            if new_uuid in self.device_interface_guids.values():
+                raise RuntimeError(f'Duplicated GUID discriminator: 0x{guid_discriminator:02X}')
+
+            self.device_interface_guids[n] = new_uuid
+
         return n
 
     def in_ep(self):
@@ -223,7 +248,7 @@ class OrbSoC(SoCCore):
         pads = self.platform.request('target_power')
 
         # USB interface.
-        if_num = self.usb_alloc.interface()
+        if_num = self.usb_alloc.interface(guid_discriminator=0x00_50)
 
         # USB descriptors.
         with self.usb_conf_desc.InterfaceDescriptor() as i:
@@ -286,7 +311,7 @@ class OrbSoC(SoCCore):
             with self.usb_conf_desc.InterfaceDescriptor() as i:
                 i.bInterfaceNumber   = if_num
                 i.bInterfaceClass    = 0x03
-                i.bInterfaceSubclass = 0x00
+                i.bInterfaceSubclass = 0x43
                 i.bInterfaceProtocol = 0x00
 
                 i.iInterface = 'CMSIS-DAP v1'
@@ -323,7 +348,7 @@ class OrbSoC(SoCCore):
 
         if with_v2:
             # USB interface.
-            if_num = self.usb_alloc.interface()
+            if_num = self.usb_alloc.interface(guid_discriminator=0x80_43)
             in_ep_num = self.usb_alloc.in_ep()
             out_ep_num = self.usb_alloc.out_ep()
 
@@ -442,7 +467,7 @@ class OrbSoC(SoCCore):
             ]
 
         # USB interface.
-        if_num = self.usb_alloc.interface()
+        if_num = self.usb_alloc.interface(guid_discriminator=0x00_54)
         ep_num = self.usb_alloc.in_ep()
 
         # USB descriptors.
@@ -459,7 +484,7 @@ class OrbSoC(SoCCore):
                 e.wMaxPacketSize   = 512
 
         # Control proxy interface.
-        proxy_if_num = self.usb_alloc.interface()
+        proxy_if_num = self.usb_alloc.interface(guid_discriminator=0x00_58)
 
         with self.usb_conf_desc.InterfaceDescriptor() as i:
             i.bInterfaceNumber   = proxy_if_num
@@ -632,7 +657,7 @@ class OrbSoC(SoCCore):
         self.bus.add_master('usb_bridge', axi_lite)
 
     def add_dfu(self, mode):
-        dfu_if = self.usb_alloc.interface()
+        dfu_if = self.usb_alloc.interface(guid_discriminator=0x80_fe)
 
         areas = [
             (0x400000, 'Application software'),
@@ -718,10 +743,11 @@ class OrbSoC(SoCCore):
                                         compatID.CompatibleID = 'WINUSB'
                                         compatID.SubCompatibleID = ''
                                     
-                                    with subsetFunc0.FeatureRegProperty() as deviceInterfaceGUIDs:
-                                        deviceInterfaceGUIDs.wPropertyDataType = 1
-                                        deviceInterfaceGUIDs.PropertyName = 'DeviceInterfaceGUID'
-                                        deviceInterfaceGUIDs.PropertyData = self.GUIDS[i]
+                                    if i in self.usb_alloc.device_interface_guids:
+                                        with subsetFunc0.FeatureRegProperty() as deviceInterfaceGUID:
+                                            deviceInterfaceGUID.wPropertyDataType = 1
+                                            deviceInterfaceGUID.PropertyName = 'DeviceInterfaceGUID'
+                                            deviceInterfaceGUID.PropertyData = '{' + str(self.usb_alloc.device_interface_guids[i]) + '}'
 
         windowsRequestHandler = WindowsRequestHandler(platformDescriptors)
         self.usb_control_handlers.append(windowsRequestHandler)
@@ -729,7 +755,7 @@ class OrbSoC(SoCCore):
 
     def add_usb_version(self):
         # USB interface.
-        if_num = self.usb_alloc.interface()
+        if_num = self.usb_alloc.interface(guid_discriminator=0x00_56)
 
         version = subprocess.check_output('git describe --always --long --dirty', shell = True).decode('utf-8').strip()
 
@@ -762,7 +788,7 @@ class OrbSoC(SoCCore):
             d.idVendor           = vid
             d.idProduct          = pid
             d.bcdUSB             = 2.1 # Support BOS descriptors
-            d.bcdDevice          = 1.2
+            d.bcdDevice          = 1.4
 
             d.iManufacturer      = "Orbcode"
             d.iProduct           = "Orbtrace Bootloader" if pid == 0x3442 else "Orbtrace Test" if pid == 0x0001 else "Orbtrace"
