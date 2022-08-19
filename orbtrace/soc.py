@@ -278,7 +278,7 @@ class OrbSoC(SoCCore):
 
         if with_v1:
             # USB interface.
-            if_num = self.usb_alloc.interface()
+            if_num = self.usb_alloc.interface(with_winusb=False)
             in_ep_num = self.usb_alloc.in_ep()
             out_ep_num = self.usb_alloc.out_ep()
 
