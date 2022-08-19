@@ -278,7 +278,7 @@ class OrbSoC(SoCCore):
 
         if with_v1:
             # USB interface.
-            if_num = self.usb_alloc.interface()
+            if_num = self.usb_alloc.interface(with_winusb=False)
             in_ep_num = self.usb_alloc.in_ep()
             out_ep_num = self.usb_alloc.out_ep()
 
@@ -717,6 +717,11 @@ class OrbSoC(SoCCore):
                                     with subsetFunc0.FeatureCompatibleID() as compatID:
                                         compatID.CompatibleID = 'WINUSB'
                                         compatID.SubCompatibleID = ''
+                                    
+                                    with subsetFunc0.FeatureRegProperty() as deviceInterfaceGUIDs:
+                                        deviceInterfaceGUIDs.wPropertyDataType = 1
+                                        deviceInterfaceGUIDs.PropertyName = 'DeviceInterfaceGUID'
+                                        deviceInterfaceGUIDs.PropertyData = self.GUIDS[i]
 
         windowsRequestHandler = WindowsRequestHandler(platformDescriptors)
         self.usb_control_handlers.append(windowsRequestHandler)
@@ -757,7 +762,7 @@ class OrbSoC(SoCCore):
             d.idVendor           = vid
             d.idProduct          = pid
             d.bcdUSB             = 2.1 # Support BOS descriptors
-            d.bcdDevice          = 1.0
+            d.bcdDevice          = 1.2
 
             d.iManufacturer      = "Orbcode"
             d.iProduct           = "Orbtrace Bootloader" if pid == 0x3442 else "Orbtrace Test" if pid == 0x0001 else "Orbtrace"
