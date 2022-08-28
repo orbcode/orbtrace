@@ -483,8 +483,8 @@ class OrbSoC(SoCCore):
         )
         self.usb.add_endpoint(ep)
 
-        cdc = ClockDomainCrossing(ep.sink.description, 'sys', 'usb')
-
+        cdc = ClockDomainCrossing(ep.sink.description, 'sys', 'usb', depth = 8)
+        
         pipeline = Pipeline(self.trace, cdc, ep)
         self.submodules += cdc, pipeline
 
