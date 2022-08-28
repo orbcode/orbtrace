@@ -1,7 +1,7 @@
 from migen import *
 from migen.genlib.cdc import MultiReg
 
-from litex.soc.interconnect.stream import Endpoint, AsyncFIFO, Pipeline, CombinatorialActor, Converter, SyncFIFO
+from litex.soc.interconnect.stream import Endpoint, AsyncFIFO, Pipeline, CombinatorialActor, Converter, SyncFIFO, PipeValid
 from litex.build.io import DDRInput
 
 from .swo import ManchesterDecoder, PulseLengthCapture, BitsToBytes
@@ -271,6 +271,7 @@ class TraceCore(Module):
             ClockDomainsRenamer({'write': 'trace', 'read': 'sys'})(AsyncFIFO([('data', 128)], 4)),
             ByteSwap(16),
             injector := Injector(),
+            PipeValid([('data', 128)]),
             Converter(128, 8),
         ]
 
