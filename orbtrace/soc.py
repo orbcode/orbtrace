@@ -4,6 +4,7 @@ import uuid
 from orbtrace.usb_serialnumber import USBSerialNumberHandler
 from orbtrace.test_io import TestIO
 from migen import *
+from migen.genlib.cdc import PulseSynchronizer
 
 from litex.soc.integration.soc_core import SoCCore
 from litex.soc.integration.soc import SoCRegion
@@ -497,6 +498,13 @@ class OrbSoC(SoCCore):
         self.add_usb_control_handler(handler)
 
         self.comb += self.trace.input_format.eq(self.wrapper.from_amaranth(handler.input_format))
+
+        self.submodules.async_baudrate_ps = PulseSynchronizer('usb', 'sys')
+        self.comb += [
+            self.trace.async_baudrate.eq(self.wrapper.from_amaranth(handler.async_baudrate)),
+            self.async_baudrate_ps.i.eq(self.wrapper.from_amaranth(handler.async_baudrate_strobe)),
+            self.trace.async_baudrate_strobe.eq(self.async_baudrate_ps.o),
+        ]
 
         # Endpoint handler.
         ep = USBStreamInEndpoint(

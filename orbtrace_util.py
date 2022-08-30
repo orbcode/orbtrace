@@ -30,6 +30,7 @@ parser_discovery.add_argument('--serial', help = 'Select serial number')
 
 parser_actions = parser.add_argument_group('Actions')
 parser_actions.add_argument('--input-format', choices = input_formats, help = 'Set trace input format')
+parser_actions.add_argument('--async-baudrate', type = int, help = 'Set async baudrate')
 parser_actions.add_argument('--vtref', type = parse_power, help = 'Set VTREF')
 parser_actions.add_argument('--vtpwr', type = parse_power, help = 'Set VTPWR')
 
@@ -71,6 +72,12 @@ class Orbtrace:
         assert if_num is not None
 
         self.handle.controlWrite(0x41, 0x01, input_formats[format], if_num, b'')
+
+    def trace_set_async_baudrate(self, baudrate, use_proxy = False):
+        if_num = self.proxy_if if use_proxy else self.trace_if
+        assert if_num is not None
+
+        self.handle.controlWrite(0x41, 0x02, 0, if_num, baudrate.to_bytes(4, 'little'))
 
     def power_set_enable(self, channel, enable):
         assert self.power_if is not None
@@ -114,6 +121,9 @@ with usb1.USBContext() as context:
 
     if args.input_format:
         orbtrace.trace_set_input_format(args.input_format, args.proxy)
+
+    if args.async_baudrate:
+        orbtrace.trace_set_async_baudrate(args.async_baudrate, args.proxy)
 
     if args.vtref:
         if args.vtref in ['off', 'on']:

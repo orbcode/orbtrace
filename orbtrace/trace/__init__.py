@@ -215,6 +215,30 @@ class StreamFlush(Module):
             ),
         ]
 
+class Divider(Module):
+    def __init__(self, num, den_bits, res_bits):
+        self.den = Signal(den_bits)
+        self.res = Signal(res_bits)
+        self.start = Signal()
+        self.done = Signal()
+        acc = Signal(max = num + 1)
+
+        self.sync += [
+            If(self.start,
+                acc.eq(num),
+                self.res.eq(0),
+                self.done.eq(0),
+            ),
+            If(~self.done,
+                If((acc >= self.den) & (self.res != (2**res_bits - 1)),
+                    acc.eq(acc - self.den),
+                    self.res.eq(self.res + 1),
+                ).Else(
+                    self.done.eq(1),
+                ),
+            ),
+        ]
+
 class TraceCore(Module):
     def __init__(self, platform):
         self.source = source = Endpoint([('data', 8)])
@@ -261,6 +285,18 @@ class TraceCore(Module):
                 swo_tpiu.eq(1),
             ],
         })
+
+        # Async baudrate.
+        self.async_baudrate = Signal(32)
+        self.async_baudrate_strobe = Signal()
+        self.async_bitlen = Signal(16, reset = 8000)
+
+        self.submodules.baudrate_divider = Divider(8000000000, 32, 16)
+        self.comb += [
+            self.baudrate_divider.den.eq(self.async_baudrate),
+            self.baudrate_divider.start.eq(self.async_baudrate_strobe),
+            self.async_bitlen.eq(self.baudrate_divider.res),
+        ]
 
         # Trace pipeline.
         self.clock_domains.cd_trace = ClockDomain()
@@ -330,6 +366,7 @@ class TraceCore(Module):
         self.submodules += [*swo_pipeline_backend, Pipeline(swo_stream_backend_sink, *swo_pipeline_backend, swo_stream_backend_source)]
 
         self.comb += swo_phy.input_signal.eq(self.swo)
+        self.comb += nrz_decoder.bitlen.eq(self.async_bitlen)
 
         # SWO monitoring.
         swo_monitor = Monitor(swo_stream_backend_source, 'swo')

@@ -39,7 +39,13 @@ Type   Description
 Set Async Baudrate
 ^^^^^^^^^^^^^^^^^^
 
-TBD
+=============  ========  ======  ================  =======
+bmRequestType  bRequest  wValue  wIndex            wLength
+=============  ========  ======  ================  =======
+0x41           0x02      0x00    bInterfaceNumber  4
+=============  ========  ======  ================  =======
+
+Payload is baudrate as a 32-bit little endian integer.
 
 Protocols
 ---------
