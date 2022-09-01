@@ -39,6 +39,12 @@ class PulseLengthCapture(Module):
             source.level.eq(state[2]),
             source.valid.eq(0),
 
+            If(count[-1],
+                source.count.eq(count),
+                source.valid.eq(1),
+                count.eq(0),
+            ),
+
             If(add_2 & ~count[-1],
                 count.eq(count + 2),
             ),
