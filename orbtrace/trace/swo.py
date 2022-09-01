@@ -206,11 +206,12 @@ class NRZDecoder(Module):
         self.source = source = Endpoint([('data', 1)])
         self.bitlen  = Signal(16, reset = 8000)
 
-        acc  = Signal(n_bits + 4 + 4)
+        acc = Signal(n_bits + 4 + 4)
+        cnt = Signal(4)
 
         self.comb += [
-            sink.ready.eq(acc < self.bitlen),
-            source.valid.eq(acc >= self.bitlen),
+            source.valid.eq((acc >= self.bitlen) & (cnt < 12)),
+            sink.ready.eq(~source.valid),
         ]
 
         self.sync += [
@@ -218,8 +219,10 @@ class NRZDecoder(Module):
             If(sink.ready & sink.valid,
                 acc.eq((sink.count << 4) + (self.bitlen >> 1)),
                 source.data.eq(sink.level),
+                cnt.eq(0),
             ).Elif(source.valid & source.ready,
                 acc.eq(acc - self.bitlen), # Subtract one bit length.
+                cnt.eq(cnt + 1),
             )
         ]
 
