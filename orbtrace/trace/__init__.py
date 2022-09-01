@@ -4,7 +4,7 @@ from migen.genlib.cdc import MultiReg
 from litex.soc.interconnect.stream import Endpoint, AsyncFIFO, Pipeline, CombinatorialActor, Converter, SyncFIFO, PipeValid
 from litex.build.io import DDRInput
 
-from .swo import ManchesterDecoder, PulseLengthCapture, BitsToBytes
+from .swo import ManchesterDecoder, PulseLengthCapture, BitsToBytes, NRZDecoder, UARTDecoder
 
 class TracePHY(Module):
     def __init__(self, pads):
@@ -298,23 +298,41 @@ class TraceCore(Module):
         # SWO pipeline.
         self.swo = Signal(2)
 
-        swo_pipeline = [
+        swo_stream_frontend_source = Endpoint([('count', 16), ('level', 1)])
+        swo_pipeline_frontend = [
             swo_phy := ClockDomainsRenamer('swo2x')(PulseLengthCapture(16)),
             ClockDomainsRenamer({'write': 'swo2x', 'read': 'swo'})(AsyncFIFO([('count', 16), ('level', 1)], 4)),
-            swo_decoder := ClockDomainsRenamer('swo')(ManchesterDecoder(16)),
+        ]
+        self.submodules += [*swo_pipeline_frontend, Pipeline(*swo_pipeline_frontend, swo_stream_frontend_source)]
+
+        swo_stream_manchester_sink = Endpoint([('count', 16), ('level', 1)])
+        swo_stream_manchester_source = Endpoint([('data', 8)])
+        swo_pipeline_manchester = [
+            ClockDomainsRenamer('swo')(ManchesterDecoder(16)),
             ClockDomainsRenamer('swo')(BitsToBytes()),
+        ]
+        self.submodules += [*swo_pipeline_manchester, Pipeline(swo_stream_manchester_sink, *swo_pipeline_manchester, swo_stream_manchester_source)]
+
+        swo_stream_nrz_sink = Endpoint([('count', 16), ('level', 1)])
+        swo_stream_nrz_source = Endpoint([('data', 8)])
+        swo_pipeline_nrz = [
+            nrz_decoder := ClockDomainsRenamer('swo')(NRZDecoder(16)),
+            ClockDomainsRenamer('swo')(UARTDecoder()),
+        ]
+        self.submodules += [*swo_pipeline_nrz, Pipeline(swo_stream_nrz_sink, *swo_pipeline_nrz, swo_stream_nrz_source)]
+
+        swo_stream_backend_sink = Endpoint([('data', 8)])
+        swo_stream_backend_source = Endpoint([('data', 8)])
+        swo_pipeline_backend = [
             ClockDomainsRenamer({'write': 'swo', 'read': 'sys'})(AsyncFIFO([('data', 8)], 4)),
             StreamFlush(7500000),
         ]
-
-        swo_stream = Endpoint([('data', 8)])
-
-        self.submodules += [*swo_pipeline, Pipeline(*swo_pipeline, swo_stream)]
+        self.submodules += [*swo_pipeline_backend, Pipeline(swo_stream_backend_sink, *swo_pipeline_backend, swo_stream_backend_source)]
 
         self.comb += swo_phy.input_signal.eq(self.swo)
 
         # SWO monitoring.
-        swo_monitor = Monitor(swo_decoder.source, 'swo')
+        swo_monitor = Monitor(swo_stream_backend_source, 'swo')
         self.submodules += swo_monitor
 
         # Indicators
@@ -340,9 +358,17 @@ class TraceCore(Module):
                 self.led_clk.eq(self.clk_indicator.out),
             ),
             If(swo_active,
-                swo_stream.connect(fifo.sink),
+                swo_stream_backend_source.connect(fifo.sink),
                 self.led_overrun.eq(self.swo_overrun_indicator.out),
                 self.led_data.eq(self.swo_data_indicator.out),
+            ),
+            If(swo_manchester,
+                swo_stream_frontend_source.connect(swo_stream_manchester_sink),
+                swo_stream_manchester_source.connect(swo_stream_backend_sink),
+            ),
+            If(swo_nrz,
+                swo_stream_frontend_source.connect(swo_stream_nrz_sink),
+                swo_stream_nrz_source.connect(swo_stream_backend_sink),
             ),
             fifo.source.connect(source),
         ]
