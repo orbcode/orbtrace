@@ -337,7 +337,7 @@ class TraceCore(Module):
         swo_stream_frontend_source = Endpoint([('count', 16), ('level', 1)])
         swo_pipeline_frontend = [
             swo_phy := ClockDomainsRenamer('swo2x')(PulseLengthCapture(16)),
-            ClockDomainsRenamer({'write': 'swo2x', 'read': 'swo'})(AsyncFIFO([('count', 16), ('level', 1)], 4)),
+            ClockDomainsRenamer({'write': 'swo2x', 'read': 'swo'})(AsyncFIFO([('count', 16), ('level', 1)], 8)),
         ]
         self.submodules += [*swo_pipeline_frontend, Pipeline(*swo_pipeline_frontend, swo_stream_frontend_source)]
 

@@ -103,8 +103,8 @@ class ManchesterDecoder(Module):
                     NextValue(short_threshold, sink.count + (sink.count >> 1)),
                     NextValue(long_threshold, ((sink.count) << 1) + (sink.count >> 1)),
                 ).Else(
-                    NextValue(short_threshold, 9),
-                    NextValue(long_threshold, 15),
+                    NextValue(short_threshold, 8),
+                    NextValue(long_threshold, 14),
                 ),                        
             ),
         )
