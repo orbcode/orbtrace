@@ -793,7 +793,7 @@ class OrbSoC(SoCCore):
             d.idVendor           = vid
             d.idProduct          = pid
             d.bcdUSB             = 2.1 # Support BOS descriptors
-            d.bcdDevice          = 1.0
+            d.bcdDevice          = 1.2
 
             d.iManufacturer      = "Orbcode"
             d.iProduct           = "Orbtrace Bootloader" if pid == 0x3442 else "Orbtrace Test" if pid == 0x0001 else "Orbtrace"
