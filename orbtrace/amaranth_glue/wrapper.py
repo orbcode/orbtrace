@@ -34,6 +34,13 @@ class Wrapper(migen.Module):
 
         return migen_sig
 
+    def from_migen(self, migen_sig):
+        amaranth_sig = amaranth.Signal(amaranth.Shape(migen_sig.nbits, migen_sig.signed))
+
+        self.connect(migen_sig, amaranth_sig)
+
+        return amaranth_sig
+
     def get_instance(self):
         connections = {}
 
