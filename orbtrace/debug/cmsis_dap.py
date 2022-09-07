@@ -147,7 +147,7 @@ class WideRam(Elaboratable):
 # ====================================
 
 class CMSIS_DAP(Elaboratable):
-    def __init__(self, streamIn, streamOut, dbgpins, v2Indication):
+    def __init__(self, streamIn, streamOut, dbgif, v2Indication):
         # External interface (generally LEDs)
         self.running        = Signal()       # Flag for if target is running
         self.connected      = Signal()       # Flag for if target is connected
@@ -218,7 +218,7 @@ class CMSIS_DAP(Elaboratable):
         self.waitRetry      = Signal(16,reset=4096) # Number of transfer retries after WAIT response
         self.matchRetry     = Signal(16,reset=16)   # Number of retries on reads with Value Match in DAP_Transfer
 
-        self.dbgpins      = dbgpins
+        self.dbgif      = dbgif
 
     # ----------------------------------------------------------------------------------
     def RESP_Invalid(self, m):
@@ -1145,7 +1145,7 @@ class CMSIS_DAP(Elaboratable):
 
         m.submodules.tfrram = self.tfrram = WideRam()
 
-        m.submodules.dbgif = self.dbgif = DBGIF(self.dbgpins)
+        m.d.comb += self.dbgif.is_jtag.eq(self.isJTAG)
 
         # Organise the CDC from the debug interface
         m.d.sync += done_cdc.eq(Cat(done_cdc[1],self.dbgif.done))

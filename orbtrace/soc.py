@@ -17,7 +17,7 @@ from .power.usb_handler import PowerUSBHandler
 from .amaranth_glue.wrapper import Wrapper
 from .amaranth_glue.luna import USBDevice, USBStreamOutEndpoint, USBStreamInEndpoint, USBMultibyteStreamInEndpoint
 from .amaranth_glue.usb_mem_bridge import MemRequestHandler
-from .amaranth_glue.cmsis_dap import CMSIS_DAP
+from .debug import DBGIF, CMSIS_DAP
 from .amaranth_glue.dfu import DFUHandler
 
 from .usb_serialnumber import USBSerialNumberHandler
@@ -139,6 +139,7 @@ class OrbSoC(SoCCore):
         # Debug
         if with_debug:
             self.add_debug()
+            self.add_cmsis_dap()
 
         # Target power
         if with_target_power:
@@ -275,7 +276,7 @@ class OrbSoC(SoCCore):
             self.led_vtpwr.r.eq(pads.vtpwr_en & pads.vtpwr_sel),
         ]
 
-    def add_debug(self, with_v1 = True, with_v2 = True):
+    def add_debug(self):
         # PHY clock.
         self.crg.add_debug()
         self.wrapper.connect_domain('debug')
@@ -285,8 +286,15 @@ class OrbSoC(SoCCore):
         self.platform.add_source('verilog/swdIF.v')
         self.platform.add_source('verilog/jtagIF.v')
 
+        # DBGIF
+        self.submodules.dbgif = DBGIF(self.platform.request('debug'))
+
+        # SWO
+        self.comb += self.trace.swo.eq(self.dbgif.swo)
+
+    def add_cmsis_dap(self, with_v1 = True, with_v2 = True):
         # CMSIS-DAP.
-        self.submodules.cmsis_dap = CMSIS_DAP(self.platform.request('debug'), wrapper = self.wrapper)
+        self.submodules.cmsis_dap = CMSIS_DAP(self.dbgif, wrapper = self.wrapper)
 
         # LEDs
         if hasattr(self, 'led_debug'):
@@ -443,9 +451,6 @@ class OrbSoC(SoCCore):
                 in_stream.connect(in_ep_v2.sink),
                 is_v2.eq(1),
             ]
-
-        # SWO
-        self.comb += self.trace.swo.eq(self.cmsis_dap.swo)
 
     def add_trace(self):
         # Trace core.
