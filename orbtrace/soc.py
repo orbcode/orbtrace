@@ -9,6 +9,8 @@ from migen.genlib.cdc import PulseSynchronizer
 from litex.soc.integration.soc_core import SoCCore
 from litex.soc.integration.soc import SoCRegion
 
+from .dma8b import DMA8b
+
 from .trace import TraceCore
 from .trace.usb_handler import TraceUSBHandler
 
@@ -41,6 +43,8 @@ from .microsoft_wcid import DeviceDescriptorCollection, PlatformDescriptorCollec
 from litex.soc.interconnect import stream
 from litex.soc.interconnect.stream import Endpoint, Pipeline, AsyncFIFO, ClockDomainCrossing, Converter, Multiplexer, Demultiplexer
 from litex.soc.interconnect.axi import AXILiteInterface, AXILiteClockDomainCrossing
+
+from litex.soc.cores.dma import WishboneDMAReader, WishboneDMAWriter
 
 from litespi.phy.generic import LiteSPIPHY
 from litespi import LiteSPI
@@ -91,6 +95,31 @@ class USBAllocator:
         return n
 
 class OrbSoC(SoCCore):
+    csr_map = {
+        # Info and system management:
+        'meta': 0,
+        'flash_uid': 1,
+        'led_ctrl': 2,
+        'i2c': 3,
+
+        # Common LiteX SoC peripherals:
+        'ctrl': 4,
+        'timer0': 5,
+        'uart': 6,
+
+        # Orbtrace peripherals:
+        'dbgif': 8,
+
+        # Stream DMA:
+        'cmsis_dap_out': 12,
+        'cmsis_dap_in': 13,
+    }
+
+    interrupt_map = {
+        'timer0': 0,
+        'uart': 1,
+    }
+
     def __init__(self, platform, sys_clk_freq, with_debug, with_trace, with_target_power, with_dfu, with_reset_csr, with_test_io, usb_vid, usb_pid, led_default, bootloader_auto_reset, **kwargs):
 
         # SoCCore
@@ -103,6 +132,9 @@ class OrbSoC(SoCCore):
 
         # Flash
         self.add_flash()
+
+        # DMA8b
+        self.add_dma8b()
 
         # Amaranth wrapper
         self.add_wrapper()
@@ -243,6 +275,22 @@ class OrbSoC(SoCCore):
             port.source.connect(self.flash_uid.phy_sink),
         ]
 
+    def add_dma8b(self, size = 2048):
+        self.submodules.dma8b = DMA8b(size)
+
+        dma8b_region = SoCRegion(
+            origin = self.mem_map.get('dma8b', 0xe0000000),
+            size = size,
+            mode = 'rw',
+            cached = False,
+        )
+
+        self.bus.add_slave(
+            name = 'dma8b',
+            slave = self.dma8b.bus,
+            region = dma8b_region,
+        )
+
     def add_target_power(self):
         pads = self.platform.request('target_power')
 
@@ -289,23 +337,31 @@ class OrbSoC(SoCCore):
         # DBGIF
         self.submodules.dbgif = DBGIF(self.platform.request('debug'))
 
+        self.dbgif.add_csrs()
+
         # SWO
         self.comb += self.trace.swo.eq(self.dbgif.swo)
 
     def add_cmsis_dap(self, with_v1 = True, with_v2 = True):
         # CMSIS-DAP.
-        self.submodules.cmsis_dap = CMSIS_DAP(self.dbgif, wrapper = self.wrapper)
+        #self.submodules.cmsis_dap = CMSIS_DAP(self.dbgif, wrapper = self.wrapper)
+
+        # DMA
+        self.submodules.cmsis_dap_out = WishboneDMAWriter(self.dma8b.get_master_port())
+        self.cmsis_dap_out.add_csr(ready_on_idle = 0)
+        self.submodules.cmsis_dap_in = WishboneDMAReader(self.dma8b.get_master_port())
+        self.cmsis_dap_in.add_csr()
 
         # LEDs
-        if hasattr(self, 'led_debug'):
-            self.comb += [
-                If(self.cmsis_dap.running,
-                    self.led_debug.g.eq(1),
-                ).Elif(self.cmsis_dap.connected,
-                    self.led_debug.r.eq(1),
-                    self.led_debug.g.eq(1),
-                ),
-            ]
+        #if hasattr(self, 'led_debug'):
+        #    self.comb += [
+        #        If(self.cmsis_dap.running,
+        #            self.led_debug.g.eq(1),
+        #        ).Elif(self.cmsis_dap.connected,
+        #            self.led_debug.r.eq(1),
+        #            self.led_debug.g.eq(1),
+        #        ),
+        #    ]
 
         if with_v1:
             # USB interface.
@@ -398,18 +454,21 @@ class OrbSoC(SoCCore):
         in_cdc = ClockDomainCrossing(stream_desc, 'sys', 'usb')
         out_cdc = ClockDomainCrossing(stream_desc, 'usb', 'sys')
 
-        pipeline = Pipeline(out_stream, out_cdc, self.cmsis_dap, in_cdc, in_stream)
+        #pipeline = Pipeline(out_stream, out_cdc, self.cmsis_dap, in_cdc, in_stream)
+        pipeline_out = Pipeline(out_stream, out_cdc, self.cmsis_dap_out)
+        pipeline_in = Pipeline(self.cmsis_dap_in, in_cdc, in_stream)
 
-        self.submodules += in_cdc, out_cdc, pipeline
+        #self.submodules += in_cdc, out_cdc, pipeline
+        self.submodules += in_cdc, out_cdc, pipeline_out, pipeline_in
 
         # Interface mux.
         is_v2 = Signal()
-        self.comb += self.cmsis_dap.is_v2.eq(is_v2)
+        #self.comb += self.cmsis_dap.is_v2.eq(is_v2)
 
-        can = self.platform.request('gpio', 0)
-        self.comb += can.data.eq(self.cmsis_dap.can)
-        if hasattr(can, 'dir'):
-            self.comb += can.dir.eq(1)
+        #can = self.platform.request('gpio', 0)
+        #self.comb += can.data.eq(self.cmsis_dap.can)
+        #if hasattr(can, 'dir'):
+        #    self.comb += can.dir.eq(1)
 
         if with_v1 and with_v2:
             out_mux = Multiplexer(stream_desc, 2)

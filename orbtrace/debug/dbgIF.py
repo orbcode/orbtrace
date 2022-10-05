@@ -1,8 +1,10 @@
 from migen import *
+from migen.genlib.cdc import MultiReg
 
 from litex.build.io import SDRInput, DDRInput, SDROutput, SDRTristate
+from litex.soc.interconnect.csr import AutoCSR, CSRStorage, CSRStatus, CSRField
 
-class DBGIF(Module):
+class DBGIF(Module, AutoCSR):
     def __init__(self, pads):
         self.addr32       = Signal(2);
         self.rnw          = Signal();
@@ -125,3 +127,64 @@ class DBGIF(Module):
             o_perr    = self.perr,
             i_dev     = self.dev,
         )
+
+    def add_csrs(self):
+        self._cmd = cmd = CSRStorage(
+            fields = [
+                CSRField('cmd', offset = 0, size = 5),
+                CSRField('addr32', offset = 8, size = 2),
+                CSRField('rnw', offset = 10, size = 1),
+                CSRField('apndp', offset = 11, size = 1),
+                CSRField('dev', offset = 16, size = 3),
+            ],
+        )
+
+        self.comb += [
+            self.command.eq(cmd.fields.cmd),
+            self.addr32.eq(cmd.fields.addr32),
+            self.rnw.eq(cmd.fields.rnw),
+            self.apndp.eq(cmd.fields.apndp),
+            self.dev.eq(cmd.fields.dev),
+        ]
+
+        self.sync += [
+            If(cmd.re,
+                self.go.eq(1),
+            ),
+            If(~self.done,
+                self.go.eq(0),
+            ),
+        ]
+
+        self._status = status = CSRStatus(
+            fields = [
+                CSRField('ack', offset = 0, size = 3),
+                CSRField('perr', offset = 8, size = 1),
+                CSRField('done', offset = 9, size = 1),
+            ],
+        )
+
+        done = Signal()
+        self.specials += MultiReg(self.done, done)
+
+        self.comb += [
+            status.fields.ack.eq(self.ack),
+            status.fields.perr.eq(self.perr),
+            status.fields.done.eq(~self.go & done),
+        ]
+
+        self._dwrite = dwrite = CSRStorage(32)
+        self._dread = dread = CSRStatus(32)
+
+        self.comb += [
+            self.dwrite.eq(dwrite.storage),
+            dread.status.eq(self.dread),
+        ]
+
+        self._pins_out = pins_out = CSRStorage(16)
+        self._pins_in = pins_in = CSRStatus(8)
+
+        self.comb += [
+            self.pinsin.eq(pins_out.storage),
+            pins_in.status.eq(self.pinsout),
+        ]
