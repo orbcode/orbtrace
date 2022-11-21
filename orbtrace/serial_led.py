@@ -19,7 +19,7 @@ class Output(Module):
         self.sync += If(~cnt_done, cnt.eq(cnt - 1))
 
         time_bit_4 = round(75e6 * 0.3e-6)
-        time_end = round(75e6 * 80e-6)
+        time_end = round(75e6 * 85e-6)
 
         fsm.act('IDLE',
             out.eq(0),
