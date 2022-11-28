@@ -891,7 +891,7 @@ class CMSIS_DAP(Elaboratable):
                         self.streamIn.valid.eq(1),
                         self.tfB_txb.eq(self.tfB_txb+1),
                         # End of transfer if there are no data to return
-                        self.streamIn.last.eq(self.isV2 & (self.tfB_txb==11) & (self.dbgif.rnw==0))
+                        self.streamIn.last.eq(self.isV2 & (self.tfB_txb==11) & ((self.dbgif.rnw==0) | (self.tfrram.adr==0)))
                     ]
 
             # Initial data sent, decide what to do next ----------------------------------------------
