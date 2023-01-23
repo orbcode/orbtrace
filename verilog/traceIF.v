@@ -1,4 +1,5 @@
 `default_nettype none
+//`define RESPECT_SYNC_TO
 
 // traceIF
 // =======
@@ -10,20 +11,25 @@
 // Working from CoreSight TPIU-Lite Technical Reference Manual Revision: r0p0
 
 module traceIF # (parameter MAXBUSWIDTH = 4, SYNC_BITS=27) (
-		input                   rst, // Reset synchronised to clock
+		input                   rst,              // Reset synchronised to clock
 
 	// Downwards interface to the trace pins (1-n bits max, can be less)
-		input [MAXBUSWIDTH-1:0] traceDina,    // Tracedata rising edge (LSB)
-		input [MAXBUSWIDTH-1:0] traceDinb,    // Tracedata falling edge (MSB)
-		input                   traceClkin,   // Tracedata clock... async to clk
-		input [1:0]             width,        // Incoming Bus width
-                                                      //  0..3 (1, 1, 2 & 4 bits)
+		input [MAXBUSWIDTH-1:0] traceDina,        // Tracedata rising edge (LSB)
+		input [MAXBUSWIDTH-1:0] traceDinb,        // Tracedata falling edge (MSB)
+		input                   traceClkin,       // Tracedata clock... async to clk
+		input [1:0]             width,            // Incoming Bus width
+                                                          //  0..3 (1, 1, 2 & 4 bits)
         // DIAGNOSTIC
                 output                  edgeOutput,
 
-	// Upwards interface to packet processor
-		output reg              FrAvail,      // Toggling indicator frame ready
-		output reg [127:0]      Frame,        // The last frame
+`ifdef RESPECT_SYNC_TO
+        // Control downwards interface
+                input                   ignoreSyncCount,  // Dont take account of sync bit
+`endif
+
+ 	// Upwards interface to packet processor
+		output reg              FrAvail,          // Toggling indicator frame ready
+		output reg [127:0]      Frame,            // The last frame
 		);		  
    
    // Internals =======================================================================
@@ -31,20 +37,21 @@ module traceIF # (parameter MAXBUSWIDTH = 4, SYNC_BITS=27) (
    // Frame maintenance
    reg [35:0] 	construct;                // Track of data being constructed
    reg [111:0]  cFrame;                   // Entire TPIU frame being constructed
-   reg [2:0]    remainingClocks;          // Number of elements remaining for word
+   reg [2:0] 	remainingClocks;          // Number of elements remaining for word
    reg [2:0]    elemCount;                // Element we're currently waiting to store
+   reg          isREsync;                 // Do we have RE (if true)  or FE sync?
+`ifdef RESPECT_SYNC_TO
    reg [SYNC_BITS-1:0]   syncInd;         // Stretcher since last sync (~0.7s @ 96MHz)
-   reg [7:0]    edgeBalance;              // Are we tending towards RE or FE sync?
-   
+`endif   
    // Flag indicating we've got a new full sync
-   wire        REsyncPacket = (construct[35 -: 32]==32'h7fff_ffff);
+   wire        REsyncPacket =            (construct[35 -: 32]==32'h7fff_ffff);
    wire        FEsyncPacket = (width==3)?(construct[31 -: 32]==32'h7fff_ffff):
                               (width==2)?(construct[33 -: 32]==32'h7fff_ffff):
                                          (construct[34 -: 32]==32'h7fff_ffff);
 
    // Pointer to where the output data word is in the construct frame
-   wire [15:0] packet = isREsync?construct[35 -:16]:
-                                 (width==3)?construct[31 -:16]:
+   wire [15:0] packet = isREsync?           construct[35 -: 16]:
+                                 (width==3)?construct[31 -: 16]:
                                  (width==2)?construct[33 -: 16]:
                                             construct[34 -: 16];
 
@@ -54,23 +61,11 @@ module traceIF # (parameter MAXBUSWIDTH = 4, SYNC_BITS=27) (
    // Lookup for packet width to clocks
    wire [2:0] packetClocks = (width==2'b11)?3'h1:(width==2'h2)?3'h3:3'h7;
 
-   // Indicator, if true, that signal is RE sync
-   wire       isREsync     = edgeBalance[7];
-
    // ================== Input data against traceclock from target system =============
    always @(posedge traceClkin, posedge rst)
      begin
         // Default status bits
-	if (rst)
-	  begin
-             syncInd         <= 0;               // Not initially synced
-	     construct       <= 0;               // Nothing built
-             elemCount       <= 0;               // No elements for this packet
-             FrAvail         <= 0;               // No frame pending right now
-             remainingClocks <= 0;               // Clocks will be set after reset
-             edgeBalance     <= 8'h80;           // Balance on the edge
-	  end
-	else
+	if (!rst)
 	  begin
              /* Roll constructed value along to accomodate new data for 4, 2 & 1 bits */
              case (width)
@@ -79,28 +74,30 @@ module traceIF # (parameter MAXBUSWIDTH = 4, SYNC_BITS=27) (
                default: construct <= {traceDinb[0],traceDina[0],construct[35:2]};
              endcase
 
-             /* Vote for which edge we're synced on */
-             if (REsyncPacket && (edgeBalance!=8'hff)) edgeBalance<=edgeBalance+1;
-             if (FEsyncPacket && (edgeBalance!=0))     edgeBalance<=edgeBalance-1;
+             /* Remember which edge we're synced on */
+             if (REsyncPacket) isREsync<=1;
+             if (FEsyncPacket) isREsync<=0;
 
              // Code for establishing and maintaining sync ============================
-             if (( REsyncPacket &&  isREsync ) ||
-                 ( FEsyncPacket && !isREsync ))
+             if ( REsyncPacket || FEsyncPacket )
                begin
 `ifndef SYNTHESIS
                   $display("Got sync");
 `endif
                   remainingClocks <= packetClocks; // We need to grab the whole packet
-                  elemCount <= 0;                  // erase any partial packet
-                  syncInd <= ~0;                   // ..and max the stretch count
+                  elemCount       <= ~0;           // erase any partial packet
+`ifdef RESPECT_SYNC_TO
+                  syncInd         <= ~0;           // ..and max the stretch count
+`endif
                end
              else
                begin
 	          // Deal with complete element reception =============================
-                  if (syncInd) syncInd<=syncInd - 1;
-                  
-                  if (remainingClocks) remainingClocks<=remainingClocks-1;
-                  else
+`ifdef RESPECT_SYNC_TO
+                  if (syncInd) syncInd <= syncInd - 1;
+`endif
+                  if (remainingClocks) remainingClocks <= remainingClocks - 1;
+	          else
                     begin
                        remainingClocks <= packetClocks;
 
@@ -109,28 +106,32 @@ module traceIF # (parameter MAXBUSWIDTH = 4, SYNC_BITS=27) (
 `ifndef SYNTHESIS
                             $display("Got word: %04X",packet);
 `endif
-                            elemCount <= elemCount + 1;
+                            elemCount <= elemCount - 1;
 
                             /* Put this word to correct place in constructed frame */
-                            if (syncInd!=0)
-                              case (elemCount)
-                                0: cFrame[111:96]<={packet[7:0],packet[15:8]};
-                                1: cFrame[ 95:80]<={packet[7:0],packet[15:8]};
-                                2: cFrame[ 79:64]<={packet[7:0],packet[15:8]};
-                                3: cFrame[ 63:48]<={packet[7:0],packet[15:8]};
-                                4: cFrame[ 47:32]<={packet[7:0],packet[15:8]};
-                                5: cFrame[ 31:16]<={packet[7:0],packet[15:8]};
-                                6: cFrame[ 15: 0]<={packet[7:0],packet[15:8]};
-                                7:
-                                  begin
+`ifdef RESPECT_SYNC_TO
+                            if ((ignoreSyncCount) || (syncInd!=0))
+`endif			      
+			      begin
+				 case (elemCount)
+                                   7: cFrame[111 -:16]<={packet[7:0],packet[15:8]};
+                                   6: cFrame[ 95 -:16]<={packet[7:0],packet[15:8]};
+                                   5: cFrame[ 79 -:16]<={packet[7:0],packet[15:8]};
+                                   4: cFrame[ 63 -:16]<={packet[7:0],packet[15:8]};
+                                   3: cFrame[ 47 -:16]<={packet[7:0],packet[15:8]};
+                                   2: cFrame[ 31 -:16]<={packet[7:0],packet[15:8]};
+                                   1: cFrame[ 15 -:16]<={packet[7:0],packet[15:8]};
+                                   0:
+                                     begin
 `ifndef SYNTHESIS
-                                     $display("Complete, sending (%d)",FrAvail);
+					$display("Complete, sending (%d)",FrAvail);
 `endif
-                                     Frame <= {cFrame,{packet[7:0],packet[15:8]}};
-                                     FrAvail <= !FrAvail;
-                                  end
-                              endcase // case (elemCount)
-                         end // if (packet!=16'h7fff)
+					Frame <= {cFrame,{packet[7:0],packet[15:8]}};
+					FrAvail <= !FrAvail;
+                                     end
+				 endcase // case (elemCount)
+                              end // if ((~respectSyncCount) || (syncInd!=0))
+                         end // if (packet != 16'h7fff)
                     end // else: !if(remainingClocks)
                end // else: !if (syncPacket)
           end // else: !if(rst)
