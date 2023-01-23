@@ -8,11 +8,11 @@ jobs:
   orbtrace_mini:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           submodules: recursive 
       - uses: YosysHQ/setup-oss-cad-suite@v1
-      - uses: gregdavill/setup-riscv-gnu-toolchain@v1.0
+      - uses: gregdavill/setup-riscv-gnu-toolchain@v2.0
       - run: python3 -m pip install wheel construct meson ninja setuptools setuptools_scm Jinja2
       - run: ./orbtrace_builder.py --platform orbtrace_mini --build
       - uses: actions/upload-artifact@v3
@@ -25,11 +25,11 @@ jobs:
   orbtrace_mini_dfu:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           submodules: recursive 
       - uses: YosysHQ/setup-oss-cad-suite@v1
-      - uses: gregdavill/setup-riscv-gnu-toolchain@v1.0
+      - uses: gregdavill/setup-riscv-gnu-toolchain@v2.0
       - run: python3 -m pip install wheel construct meson ninja setuptools setuptools_scm Jinja2
       - run: ./orbtrace_builder.py --platform orbtrace_mini --profile dfu --build 
       - uses: actions/upload-artifact@v3
@@ -42,11 +42,11 @@ jobs:
   orbtrace_mini_test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           submodules: recursive 
       - uses: YosysHQ/setup-oss-cad-suite@v1
-      - uses: gregdavill/setup-riscv-gnu-toolchain@v1.0
+      - uses: gregdavill/setup-riscv-gnu-toolchain@v2.0
       - run: python3 -m pip install wheel construct meson ninja setuptools setuptools_scm Jinja2
       - run: ./orbtrace_builder.py --platform orbtrace_mini --profile test --build 
       - uses: actions/upload-artifact@v3
