@@ -553,7 +553,7 @@ class CMSIS_DAP(Elaboratable):
         # We have the command, index and transfer count, need to set up to get the transfers
 
         m.d.sync += [
-            self.dbgif.dev.eq(self.rxBlock.bit_select(13,3)),
+            self.dbgif.dev.eq(self.rxBlock.bit_select(8,3)),
             self.transferTCount.eq(self.rxBlock.bit_select(16,8)),
             self.tfrram.adr.eq(0),
             self.tfr_txb.eq(0),
