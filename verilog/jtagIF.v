@@ -68,7 +68,7 @@ module jtagIF (
    parameter ST_JTAG_IDDATA      = 3;           // Getting ID data
    parameter ST_JTAG_WRITEIR     = 5;                // Writing IR
    parameter ST_JTAG_TRANSFER    = 6;  // Performing Data Transfer
-   
+
    assign idle      = (jtag_state==ST_JTAG_IDLE);
 
 // ========================================================================================================
@@ -138,7 +138,7 @@ module jtagIF (
                     endcase // case (cmd)
                  end
             end // case: ST_JTAG_IDLE
-	  
+
 	  // ==============================================================================================
 	  ST_JTAG_TRANSFER: // TRANSFER Supporting State ==================================================
 	    begin
@@ -146,7 +146,7 @@ module jtagIF (
 	       tmsbits    <= 6'b000100; // 6'b000001;
 	       tmscount   <= 3;
 	       next_state <= ST_JTAG_IDLE;
-	       
+
 	       if (falling) // Write Host -> Device -------------------------------------------------------
 		 begin
 		    if (devcount!=dev)
@@ -156,28 +156,28 @@ module jtagIF (
 			0: tdi<=rnw;
 			1: tdi<=addr32[0];
 			2: tdi<=addr32[1];
-			
+
 			default:
 			  tdi <= rnw?1'b1:dwrite[windex];
 		      endcase // case (tdxcount)
-		    
+
 		    if ((devcount==ndevs))
 		      tms      <= 1'b1;
 		 end
-	       
+
 	       if (rising)  // Read Device -> Host --------------------------------------------------------
 		 begin
 		    tdxcount <= tdxcount+1;
 		    windex   <= windex+1;
-		    
+
 		    case (tdxcount)
 		      0: ack[0]<=tdo;
 		      1: ack[1]<=tdo;
-		      2: 
+		      2:
 			begin
 			   ack[2]<=tdo;
 			   windex<=0;
-			   
+
 			   // If ack is wait then abort
 			   if ({tdo,ack[1],ack[0]}!=2)
 			     begin
@@ -187,7 +187,7 @@ module jtagIF (
 			end
 		      default: dread[windex] <= tdo;
 		    endcase // case (tdxcount)
-		    
+
 		    // In bypass for every device except the target, so only 1 bit
 		    if ((devcount!=dev) || (34==tdxcount))
 		      begin
@@ -201,18 +201,18 @@ module jtagIF (
 		      end
 		 end // if (rising)
 	    end
-	  
+
 	  // ==============================================================================================
           ST_JTAG_IDDATA: // READID Supporting States =====================================================
 	    begin
 	       if (falling)
 		 tdi <= ((devcount==dev) & (rnw==0))?dwrite[tdxcount]:1'b0;
-	       
+
 	       if (rising)
 		 begin
 		    tdxcount <= tdxcount+1;
 		    dread[tdxcount] <= tdo;
-		    
+
 		    // For ID read it's always 32 bits...
 		    if (5'h1f==tdxcount)
 		      begin
@@ -236,7 +236,7 @@ module jtagIF (
 	       if (falling)
                  jtag_state <= ST_JTAG_TMSOUT;
             end
-	  
+
 	  // ==============================================================================================
 	  ST_JTAG_WRITEIR: // SETIR Supporting states =====================================================
 	    begin
@@ -247,18 +247,18 @@ module jtagIF (
 	       if (falling)
 		 begin
 		    tdi <= (devcount==dev)?ir[tdxcount]:1'b1;
-		    
+
 		    // If we are on the last bit then signal tms to leave
 		    if ((devcount==ndevs) && (tdxcount[4:0]+1 == irlenx[ 5*devcount +:5 ] ))
 		      tms <= 1'b1;
 		 end
-	       
+
 	       if (rising)
 		 begin
 		    tdxcount <= tdxcount+1;
-		    
+
 		    if ( tdxcount[4:0]+1 == irlenx[ 5*devcount +:5 ] )
-		      
+
 		      begin
 			 if (devcount==ndevs)
 			   jtag_state <= ST_JTAG_TMSOUT;
@@ -270,7 +270,7 @@ module jtagIF (
 		      end
 		 end
             end // case: ST_JTAG_WRITEIR
-	  
+
 	  // ==============================================================================================
           ST_JTAG_TMSOUT: // clock out defined tms bits ===================================================
 	    begin
@@ -288,4 +288,3 @@ module jtagIF (
         endcase // case (jtag_state)
      end // always @ (posedge clk)
 endmodule // jtagIF
-
