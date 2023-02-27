@@ -568,7 +568,7 @@ class CMSIS_DAP(Elaboratable):
         # Filter for case someone tries to send us no transfers to perform
         # in which case we send back a good ack!
         with m.If(self.rxBlock.bit_select(16,8)!=0):
-            m.next = 'DAP_Transfer_PROCESS';
+            m.next = 'DAP_Transfer_PROCESS'
         with m.Else():
             m.d.sync += [
                 self.txBlock.word_select(2,8).eq(C(1,8)),
@@ -617,8 +617,7 @@ class CMSIS_DAP(Elaboratable):
                             m.d.sync += self.busy.eq(0)
                     with m.Else():
                         # We are consuming this event, so count it
-                        with m.If(self.transferTCount):
-                            m.d.sync += self.transferTCount.eq(self.transferTCount-1)
+                        m.d.sync += self.transferTCount.eq(self.transferTCount-1)
                         # This is a good transaction from the stream, so record the fact it's in flow
                         m.d.sync += self.txBlock.word_select(1,8).eq(self.txBlock.word_select(1,8)+1)
 
