@@ -74,8 +74,8 @@ def main():
     if not args.output_dir:
         args.output_dir = Path('build') / platform.name
 
-    if not args.csr_csv:
-        args.csr_csv = Path(args.output_dir) / 'gateware' / 'csr.csv'
+    if not args.soc_csv:
+        args.soc_csv = Path(args.output_dir) / 'gateware' / 'csr.csv'
 
     soc = OrbSoC(
         platform = platform,
