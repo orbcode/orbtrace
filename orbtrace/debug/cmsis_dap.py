@@ -772,7 +772,7 @@ class CMSIS_DAP(Elaboratable):
 
         m.d.sync += [
             # DAP Index is 1 byte in, transfer count is dealt with at the end
-            self.dbgif.dev.eq(self.rxBlock.bit_select(13,3)),
+            self.dbgif.dev.eq(self.rxBlock.bit_select(8,3)),
             self.tfrram.adr.eq(0),
 
             # We will not read back the first word immediately if we're in JTAG read
