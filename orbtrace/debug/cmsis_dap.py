@@ -205,7 +205,7 @@ class CMSIS_DAP(Elaboratable):
 
         # Support for DAP_Transfer_Block
         self.tfB_txb        = Signal(4)      # TFR Block State machine index (12 states)
-        self.Bretries       = Signal(16)     # Retry counter for WAIT        
+        self.Bretries       = Signal(16)     # Retry counter for WAIT
         self.transferBCount = Signal(16)     # Number of transfers 1..65535
         self.readBDelay     = Signal()       # We are doing a posted read
         self.readBIgnore    = Signal()       # Don't swallow this data, we're starting to post
@@ -213,7 +213,7 @@ class CMSIS_DAP(Elaboratable):
         # Support for RESP_Transfer_Complete
         self.txb            = Signal(4)      # Transfer complete state machine (8 states)
         self.transferCCount = Signal(16)     # Number of transfers 1..65535
-        
+
         # CMSIS-DAP Configuration info
         self.waitRetry      = Signal(16,reset=4096) # Number of transfer retries after WAIT response
         self.matchRetry     = Signal(16,reset=16)   # Number of retries on reads with Value Match in DAP_Transfer
@@ -290,7 +290,7 @@ class CMSIS_DAP(Elaboratable):
                 m.d.sync += [
                     self.txBlock.word_select(0,16).eq(Cat(self.rxBlock.word_select(0,8),C(1,8))),
                     self.dbgif.command.eq(CMD_SET_SWD),
-                    self.isJTAG.eq(0),  
+                    self.isJTAG.eq(0),
                     self.txLen.eq(2),
                     self.dbgif.go.eq(1)
                     ]
@@ -302,7 +302,7 @@ class CMSIS_DAP(Elaboratable):
                 m.d.sync += [
                     self.txBlock.word_select(0,16).eq(Cat(self.rxBlock.word_select(0,8),C(2,8))),
                     self.dbgif.command.eq(CMD_SET_JTAG),
-                    self.isJTAG.eq(1),                    
+                    self.isJTAG.eq(1),
                     self.txLen.eq(2),
                     self.dbgif.go.eq(1)
                     ]
@@ -576,7 +576,7 @@ class CMSIS_DAP(Elaboratable):
                 ]
             m.next = 'RESPOND'
 
-                
+
     def RESP_Transfer_Process(self, m):
         m.d.comb += self.tfrram.dat_w.eq(self.dbgif.dread)
 
@@ -602,7 +602,7 @@ class CMSIS_DAP(Elaboratable):
                         m.d.sync += [
                             self.tfr_txb.eq(6),
                             self.tfrReq.eq(0x0e),
-                            self.readDelay.eq(0),                    
+                            self.readDelay.eq(0),
                         ]
                     with m.Else():
                         # Otherwise progress to the exit states
@@ -621,7 +621,7 @@ class CMSIS_DAP(Elaboratable):
                             m.d.sync += self.transferTCount.eq(self.transferTCount-1)
                         # This is a good transaction from the stream, so record the fact it's in flow
                         m.d.sync += self.txBlock.word_select(1,8).eq(self.txBlock.word_select(1,8)+1)
-                    
+
                         # Check to see if readDelay continues...
                         # Rule for JTAG is any read, for SWD it's any AP read
                         # If it doesn't then we need to collect these data before progressing
@@ -649,11 +649,11 @@ class CMSIS_DAP(Elaboratable):
                     self.readIgnore.eq((~self.readDelay) & ((self.isJTAG & (self.tfrReq.bit_select(1,1))) |
                                                           ((~self.isJTAG) & (self.tfrReq.bit_select(0,2)==3))))
                     ]
-                
+
                 # ..and now go do the read or write as appropriate
                 with m.If ((~self.tfrReq.bit_select(1,1)) |
                            self.tfrReq.bit_select(4,1) |
-                           self.tfrReq.bit_select(5,1) ):                    
+                           self.tfrReq.bit_select(5,1) ):
                     # Need to collect the value
                     m.d.sync += self.tfr_txb.eq(2)
                 with m.Else():
@@ -742,7 +742,7 @@ class CMSIS_DAP(Elaboratable):
                         m.d.sync += self.tfrram.adr.eq(self.tfrram.adr+1)
 
                     m.d.sync += self.tfr_txb.eq(0)
-                            
+
             # Transfer completed, start sending data back -----------------------------------------
             with m.Case(10,11,12):
                 with m.If(self.streamIn.ready):
@@ -760,7 +760,7 @@ class CMSIS_DAP(Elaboratable):
                     self.txb.eq(0),
                     self.txedLen.eq((self.tfrram.adr*4)+3)  # Record length of data to be returned
                 ]
-                
+
     # ----------------------------------------------------------------------------------
     # ----------------------------------------------------------------------------------
     def RESP_TransferBlock_Setup(self, m):
@@ -904,7 +904,7 @@ class CMSIS_DAP(Elaboratable):
 
     # ----------------------------------------------------------------------------------
     # ----------------------------------------------------------------------------------
-                
+
     def RESP_Transfer_Complete(self, m):
         # Complete the process of returning data collected via either Transfer_Process or
         # TransferBlock_Process. Data count to be transferred is inferred by ram address and
