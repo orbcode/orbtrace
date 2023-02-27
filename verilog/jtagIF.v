@@ -161,8 +161,13 @@ module jtagIF (
 			  tdi <= rnw?1'b1:dwrite[windex];
 		      endcase // case (tdxcount)
 
-		    if ((devcount==ndevs))
-		      tms      <= 1'b1;
+		    // If we're on the last device
+		    if (devcount==ndevs)
+		      // And that device is the one selected for transactions + we're on
+		      // the final cycle of the transaction, or the device is not selected
+		      if (((devcount==dev) && (34==tdxcount)) || (devcount!=dev))
+			// Signal EXIT1-DR
+			tms      <= 1'b1;
 		 end
 
 	       if (rising)  // Read Device -> Host --------------------------------------------------------
