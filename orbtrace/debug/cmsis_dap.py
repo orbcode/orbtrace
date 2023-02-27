@@ -487,7 +487,7 @@ class CMSIS_DAP(Elaboratable):
         m.d.sync += [
             self.dbgif.command.eq( CMD_SET_JTAG_CFG ),
             self.jtag_ircount.eq(0),
-            self.dbgif.dev.eq(self.rxBlock.bit_select(8,3)-1)
+            self.dbgif.dev.eq(self.rxBlock.bit_select(8,4)-1)
             ]
         m.next='JTAG_Configure_PROCESS';
 
