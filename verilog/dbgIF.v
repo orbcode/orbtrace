@@ -188,6 +188,7 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
 
    // JTAG Related
    reg [2:0]                      ndevs;                                 // Number of devices in JTAG chain
+   reg [3:0]                      current_dev;                             // The currently selected device
    reg [29:0]                     irlenx;                                  // Length of each IR-1, 5x5 bits
    reg [3:0] 			  ir;                                           // Last written ir contents
 
@@ -357,6 +358,7 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
 	     ir          <= JTAG_BYPASS;
 	     idleCycles  <= MIN_IDLE_CYCLES;
 	     turnaround  <= 0;
+             current_dev <= 4'b1000;
 	  end
 	else
           begin
@@ -439,11 +441,15 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
                         CMD_TRANSACT: // Execute transaction on target interface --------------------------
                           if (fallingedge)
 			    begin
-			       if ((commanded_mode==MODE_JTAG) && (ir!= (apndp?JTAG_APACC:JTAG_DPACC)))
+			       // If we're in JTAG mode and either the device changed, or the IR state needed
+                               // changed, then update the IR chain value
+			       if ((commanded_mode==MODE_JTAG) && ((current_dev!=dev) ||
+				   (ir!= (apndp?JTAG_APACC:JTAG_DPACC))))
 				 begin
 				    // Before we go any further we have to setup the right IR to write to
 				    jtag_cmd <= JTAG_CMD_IR;
 				    JTAG_trans_os <= 1'b1;
+                                    current_dev <= dev;
 				 end
 			       else
 				 begin
