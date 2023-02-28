@@ -252,12 +252,12 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
                           (active_mode==MODE_JTAG)?jtag_tms:
                           local_swdo;
    assign jtag_tdo      = tdo_swo;
-   
+
    assign jtag_wr       = 1'b1;
    assign tdi           = ((dbg_state==ST_DBG_IDLE) || (active_mode==MODE_SWJ))?pinw_tdi
 			  :(active_mode==MODE_JTAG)?jtag_tdi
 			  :1'b1;
-   
+
    assign swwr          = ((dbg_state==ST_DBG_IDLE) || (active_mode==MODE_SWJ))?pinw_swwr
 			  :(active_mode==MODE_SWD)?swd_swwr
 			  :(active_mode==MODE_JTAG)?jtag_wr
@@ -343,7 +343,7 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
 	      );
 
    assign pinw_swclk = pinsin[8+0] ?pinsin[0]:1'b1;
-   
+
    ////////////////////////////////////////////////////////////////////////////////////////////////////////
    always @(posedge clk, posedge rst)
 
@@ -369,19 +369,19 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
 	     pinw_tdi    <= pinsin[8+2]?pinsin[2]:1;
 	     pinw_swwr   <= pinsin[8+4]?pinsin[4]:0;
 	     pinw_swdo   <= pinsin[8+1]?pinsin[1]:0;
-	     
+
              // Run the clock, and edge detection
              cdivcount   <= cdivcount?cdivcount-1:clkDiv;
 	     risingedge  <= 0;
 	     fallingedge <= 0;
-	     
+
 	     if (cdivcount==0)
 	       begin
 		  risingedge  <= ~root_tgtclk;
 		  fallingedge <= root_tgtclk;
 		  root_tgtclk <= ~root_tgtclk;
 	       end
-	     
+
              // The usecs counter can run all of the time, it's independent
              usecsdiv<=usecsdiv?usecsdiv-1:TICKS_PER_USEC-1;
 
