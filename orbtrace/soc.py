@@ -31,6 +31,8 @@ from .led_ctrl import LEDCtrl
 
 from .reset import Reset
 
+from .glitch import Glitch
+
 from usb_protocol.types      import USBTransferType, USBRequestType, USBStandardRequests, USBRequestRecipient, DescriptorTypes
 from usb_protocol.emitters.descriptors import cdc
 
@@ -144,6 +146,7 @@ class OrbSoC(SoCCore):
         # Target power
         if with_target_power:
             self.add_target_power()
+            self.add_glitch()
 
         # Platform specific
         self.add_platform_specific()
@@ -557,6 +560,14 @@ class OrbSoC(SoCCore):
         ]
 
         self.submodules.test_io = TestIO(signals)
+
+    def add_glitch(self):
+        trigger = self.led_vtref.b
+        gpio = self.platform.request('gpio', 5)
+
+        self.comb += gpio.dir.eq(1)
+
+        self.submodules.glitch = Glitch(trigger, gpio.data)
 
     def add_button_handler(self):
         # This is a workaround to ensure the button signal is not optimized out.
