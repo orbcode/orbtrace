@@ -68,7 +68,6 @@ module jtagIF (
    parameter ST_JTAG_IDDATA      = 3;           // Getting ID data
    parameter ST_JTAG_WRITEIR     = 5;                // Writing IR
    parameter ST_JTAG_TRANSFER    = 6;  // Performing Data Transfer
-
    assign idle      = (jtag_state==ST_JTAG_IDLE);
 
 // ========================================================================================================
@@ -162,10 +161,7 @@ module jtagIF (
 		      endcase // case (tdxcount)
 
 		    // If we're on the last device
-		    if (devcount==ndevs)
-		      // And that device is the one selected for transactions + we're on
-		      // the final cycle of the transaction, or the device is not selected
-		      if (((devcount==dev) && (34==tdxcount)) || (devcount!=dev))
+		    if ((devcount==ndevs) && ((34==tdxcount) || (devcount!=dev)))
 			// Signal EXIT1-DR
 			tms      <= 1'b1;
 		 end
