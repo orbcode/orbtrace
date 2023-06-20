@@ -1,4 +1,3 @@
-import subprocess
 import uuid
 
 from orbtrace.usb_serialnumber import USBSerialNumberHandler
@@ -30,6 +29,8 @@ from .flashwriter import FlashWriter
 from .led_ctrl import LEDCtrl
 
 from .reset import Reset
+
+from .git_version import get_version, get_version_bcd
 
 from usb_protocol.types      import USBTransferType, USBRequestType, USBStandardRequests, USBRequestRecipient, DescriptorTypes
 from usb_protocol.emitters.descriptors import cdc
@@ -767,8 +768,6 @@ class OrbSoC(SoCCore):
         # USB interface.
         if_num = self.usb_alloc.interface(guid_discriminator=0x00_56)
 
-        version = subprocess.check_output('git describe --always --long --dirty', shell = True).decode('utf-8').strip()
-
         # USB descriptors.
         with self.usb_conf_desc.InterfaceDescriptor() as i:
             i.bInterfaceNumber   = if_num
@@ -776,7 +775,7 @@ class OrbSoC(SoCCore):
             i.bInterfaceSubclass = 0x56
             i.bInterfaceProtocol = 0x00
 
-            i.iInterface = f'Version: {version}'
+            i.iInterface = f'Version: {get_version()}'
 
     def add_usb_control_handler(self, handler):
         if hasattr(self, 'usb_control_ep'):
@@ -798,7 +797,7 @@ class OrbSoC(SoCCore):
             d.idVendor           = vid
             d.idProduct          = pid
             d.bcdUSB             = 2.1 # Support BOS descriptors
-            d.bcdDevice          = 1.2
+            d.bcdDevice          = get_version_bcd()
 
             d.iManufacturer      = "Orbcode"
             d.iProduct           = "Orbtrace Bootloader" if pid == 0x3442 else "Orbtrace Test" if pid == 0x0001 else "Orbtrace"

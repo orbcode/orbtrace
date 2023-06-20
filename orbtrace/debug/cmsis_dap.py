@@ -1,5 +1,6 @@
 from amaranth                import *
 from .dbgIF                  import DBGIF
+from ..git_version           import get_version
 
 # Principle of operation
 # ======================
@@ -19,8 +20,8 @@ from .dbgIF                  import DBGIF
 DAP_CONNECT_DEFAULT      = 1                # Default connect is SWD
 DAP_PROTOCOL_STRING_LEN  = 5
 DAP_PROTOCOL_STRING      = Cat(C(DAP_PROTOCOL_STRING_LEN+1,8),C(ord('2'),8),C(ord('.'),8),C(ord('1'),8),C(ord('.'),8),C(ord('0'),8),C(0,8)) # Protocol version V2.1.0
-DAP_VERSION_STRING_LEN   = 4
-DAP_VERSION_STRING       = Cat(C(DAP_VERSION_STRING_LEN+1,8),C(0x31,8),C(0x2e,8),C(0x30,8),C(0x30,8),C(0,8))
+DAP_VERSION_STRING_LEN   = len(get_version().encode('utf-8'))
+DAP_VERSION_STRING       = Cat(C(DAP_VERSION_STRING_LEN+1,8), *(C(c, 8) for c in get_version().encode('utf-8')), C(0,8))
 DAP_CAPABILITIES         = 0x03             # JTAG and SWD Debug
 DAP_TD_TIMER_FREQ        = 0x3B9ACA00       # 1uS resolution timer
 DAP_MAX_PACKET_COUNT     = 1                # 1 max packet count
@@ -164,7 +165,7 @@ class CMSIS_DAP(Elaboratable):
         self.rxedLen        = Signal(3)      # Rxlen picked up so far
 
         # Transmit block construction
-        self.txBlock        = Signal( 14*8 ) # Response to be returned
+        self.txBlock        = Signal( 32*8 ) # Response to be returned
         self.txLen          = Signal(range(MAX_MSG_LEN))     # Length of response to be returned
         self.txedLen        = Signal(range(MAX_MSG_LEN))     # Length of response that has been returned so far
         self.busy           = Signal()       # Indicator that we can't receive stream traffic at the moment
