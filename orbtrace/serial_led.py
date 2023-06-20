@@ -12,14 +12,14 @@ class Output(Module):
         data = Signal()
         last = Signal()
 
-        cnt = Signal(13)
+        cnt = Signal(14)
         cnt_done = Signal()
 
         self.comb += cnt_done.eq(cnt == 0)
         self.sync += If(~cnt_done, cnt.eq(cnt - 1))
 
         time_bit_4 = round(75e6 * 0.3e-6)
-        time_end = round(75e6 * 85e-6)
+        time_end = round(75e6 * 200e-6)
 
         fsm.act('IDLE',
             out.eq(0),
