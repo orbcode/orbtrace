@@ -11,6 +11,7 @@ jobs:
       - uses: actions/checkout@v3
         with:
           submodules: recursive 
+      - run: git fetch --prune --unshallow --no-recurse-submodules
       - uses: YosysHQ/setup-oss-cad-suite@v2
       - uses: gregdavill/setup-riscv-gnu-toolchain@v2.0
       - run: python3 -m pip install wheel construct meson ninja setuptools setuptools_scm Jinja2
@@ -28,6 +29,7 @@ jobs:
       - uses: actions/checkout@v3
         with:
           submodules: recursive 
+      - run: git fetch --prune --unshallow --no-recurse-submodules
       - uses: YosysHQ/setup-oss-cad-suite@v2
       - uses: gregdavill/setup-riscv-gnu-toolchain@v2.0
       - run: python3 -m pip install wheel construct meson ninja setuptools setuptools_scm Jinja2
@@ -45,6 +47,7 @@ jobs:
       - uses: actions/checkout@v3
         with:
           submodules: recursive 
+      - run: git fetch --prune --unshallow --no-recurse-submodules
       - uses: YosysHQ/setup-oss-cad-suite@v2
       - uses: gregdavill/setup-riscv-gnu-toolchain@v2.0
       - run: python3 -m pip install wheel construct meson ninja setuptools setuptools_scm Jinja2
