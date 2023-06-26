@@ -16,13 +16,14 @@ class MemRequestHandler(USBRequestHandler):
         w = self.axi_lite.w
         b = self.axi_lite.b
 
+        data = Array(Signal(8) for i in range(4))
+        idx = Signal(range(5))
+
         m.d.comb += [
             w.strb.eq(0b1111),
+            w.data.eq(Cat(data)),
             b.ready.eq(1),
         ]
-
-        data = Array(Signal(8) for i in range(3))
-        idx = Signal(range(4))
 
         with m.FSM(domain = 'usb') as fsm:
 
@@ -39,25 +40,24 @@ class MemRequestHandler(USBRequestHandler):
                     m.next = 'RECEIVE'
 
             with m.State('RECEIVE'):
-                with m.If(self.interface.rx.valid & self.interface.rx.next):
-                    with m.If(idx < 3):
-                        m.d.usb += [
-                            data[idx].eq(self.interface.rx.payload),
-                            idx.eq(idx + 1),
-                        ]
+                with m.If(self.interface.rx.valid & self.interface.rx.next & (idx < 4)):
+                    m.d.usb += [
+                        data[idx].eq(self.interface.rx.payload),
+                        idx.eq(idx + 1),
+                    ]
 
-                    with m.Else():
-                        m.d.usb += w.data.eq(Cat(data, self.interface.rx.payload))
-                        m.next = 'WRITE'
+                with m.If(self.interface.rx_ready_for_response):
+                    m.d.comb += self.interface.handshakes_out.ack.eq(1)
+                    m.next = 'WRITE'
+
+                with m.If(self.interface.rx_invalid):
+                    m.d.usb += idx.eq(0)
 
             with m.State('WRITE'):
                 m.d.comb += w.valid.eq(1)
 
                 with m.If(w.ready):
                     m.next = 'IDLE'
-
-        with m.If(self.interface.rx_ready_for_response):
-            m.d.comb += self.interface.handshakes_out.ack.eq(1)
 
         with m.If(self.interface.status_requested):
             m.d.comb += self.send_zlp()

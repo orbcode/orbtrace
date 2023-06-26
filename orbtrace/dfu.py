@@ -61,22 +61,11 @@ class DFUHandler(USBRequestHandler):
 
         last_addr = Signal(24)
 
-        #endpoint_number_matches  = (tokenizer.endpoint == self._endpoint_number)
-        #targeting_endpoint       = endpoint_number_matches & tokenizer.is_out
-        #okay_to_receive          = targeting_endpoint & expected_pid_match & ~overflow
-        #targeting_endpoint       = endpoint_number_matches & tokenizer.is_out
-        #expected_pid_match       = (interface.rx_pid_toggle == expected_data_toggle)
-
         m.d.comb += [
             fifo.write_data.eq(rx.payload),
-            #fifo.write_en.eq(okay_to_receive & rx.next & rx.valid),
             fifo.write_en.eq(rx.next & rx.valid),
 
-            # We'll keep data if our packet finishes with a valid CRC and no overflow; and discard it otherwise.
-            #fifo.write_commit    .eq(targeting_endpoint & boundary_detector.complete_out & ~overflow),
-            #fifo.write_discard   .eq(targeting_endpoint & (boundary_detector.invalid_out | (boundary_detector.complete_out & overflow))),
-            #fifo.write_commit.eq(interface.rx_complete),
-            #fifo.write_discard.eq(interface.rx_invalid),
+            fifo.write_discard.eq(interface.rx_invalid),
             fifo.write_commit.eq(interface.rx_ready_for_response),
 
             self.source.data.eq(fifo.read_data),
