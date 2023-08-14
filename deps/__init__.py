@@ -6,7 +6,7 @@ ignore = [
 	'__pycache__',
 ]
 
-paths = [str(p) for p in pathlib.Path(__file__).parent.iterdir() if p.is_dir() and p not in ignore]
+paths = [str(p) for p in pathlib.Path(__file__).parent.iterdir() if p.is_dir() and p.name not in ignore]
 
 for p in paths:
 	sys.path.insert(1, p)
