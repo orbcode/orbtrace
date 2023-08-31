@@ -6,6 +6,8 @@ from litex.build.io import DDRInput
 
 from .swo import ManchesterDecoder, PulseLengthCapture, BitsToBytes, NRZDecoder, UARTDecoder
 
+from . import cobs
+
 class TracePHY(Module):
     def __init__(self, pads):
         self.source = source = Endpoint([('data', 128)])
@@ -307,9 +309,14 @@ class TraceCore(Module):
             ClockDomainsRenamer({'write': 'trace', 'read': 'sys'})(AsyncFIFO([('data', 128)], 4)),
             ByteSwap(16),
             injector := Injector(),
-            PipeValid([('data', 128)]),
+            pv := PipeValid([('data', 128)]),
             Converter(128, 8),
+            cobs.COBSEncoder(),
+            cobs.DelimiterAppender(),
+            cobs.SuperFramer(7500000, 65536),
         ]
+
+        pv.comb += pv.source.last.eq(1)
 
         trace_stream = Endpoint([('data', 8)])
 
