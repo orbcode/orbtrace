@@ -92,18 +92,29 @@ class Packetizer(Module):
         self.sink = sink = Endpoint([('channel', 7), ('data', 8)])
         self.source = source = Endpoint([('data', 8)])
 
+        max_size = 1024
+
         channel = Signal(7)
+        byte_cnt = Signal(max = max_size)
+
+        start_new_packet = Signal()
+
+        self.comb += start_new_packet.eq((sink.channel != channel) | (byte_cnt >= max_size - 1))
 
         self.submodules.fsm = fsm = FSM()
 
         fsm.act('DATA',
             source.data.eq(sink.data),
-            source.valid.eq(sink.valid & (sink.channel == channel)),
-            sink.ready.eq(source.ready & (sink.channel == channel)),
+            source.valid.eq(sink.valid & ~start_new_packet),
+            sink.ready.eq(source.ready & ~start_new_packet),
 
-            If(sink.valid & (sink.channel != channel),
+            If(sink.valid & start_new_packet,
                 NextState('HEADER'),
                 NextValue(channel, sink.channel),
+            ),
+
+            If(sink.valid & sink.ready,
+                NextValue(byte_cnt, byte_cnt + 1),
             ),
         )
 
@@ -114,6 +125,7 @@ class Packetizer(Module):
 
             If(source.ready,
                 NextState('DATA'),
+                NextValue(byte_cnt, 0),
             ),
         )
 
