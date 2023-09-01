@@ -6,7 +6,7 @@ from litex.build.io import DDRInput
 
 from .swo import ManchesterDecoder, PulseLengthCapture, BitsToBytes, NRZDecoder, UARTDecoder
 
-from . import cobs
+from . import cobs, tpiu
 
 class TracePHY(Module):
     def __init__(self, pads):
@@ -308,15 +308,16 @@ class TraceCore(Module):
             phy := ClockDomainsRenamer('trace')(TracePHY(trace_pads)),
             ClockDomainsRenamer({'write': 'trace', 'read': 'sys'})(AsyncFIFO([('data', 128)], 4)),
             ByteSwap(16),
-            injector := Injector(),
-            pv := PipeValid([('data', 128)]),
-            Converter(128, 8),
+            #injector := Injector(),
+            #pv := PipeValid([('data', 128)]),
+            #Converter(128, 8),
+            tpiu.TPIUDemux(),
             cobs.COBSEncoder(),
             cobs.DelimiterAppender(),
             cobs.SuperFramer(7500000, 65536),
         ]
 
-        pv.comb += pv.source.last.eq(1)
+        #pv.comb += pv.source.last.eq(1)
 
         trace_stream = Endpoint([('data', 8)])
 
@@ -333,7 +334,7 @@ class TraceCore(Module):
         self.comb += [
             keepalive.total_frames.eq(monitor.total),
             keepalive.lost_frames.eq(monitor.lost),
-            keepalive.source.connect(injector.sink_inject),
+            #keepalive.source.connect(injector.sink_inject),
         ]
 
         self.submodules += monitor, keepalive
