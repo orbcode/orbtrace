@@ -107,7 +107,7 @@ module swdIF (
 			   (((bitcount==PROT_PAR) && rising) || (bitcount>PROT_PAR))
 			   );
 	  end
-	
+
         if (rising)
           begin
              bitcount <= bitcount+1;                                                            // Next bit
@@ -118,7 +118,7 @@ module swdIF (
                ST_IDLE: // Idle waiting for something to happen ===========================================
                  begin
                     bitcount  <= 0;
-		    
+
                     if (go)                                                  // Request to start a transfer
                       begin
 			 swd_state <= ST_HDR_TX;
@@ -142,7 +142,7 @@ module swdIF (
                  begin
                     spincount<=spincount-1;                                             // Turn in progress
 		    bitcount <= PROT_TRN1;
-		    
+
                     if (spincount==0)
 		      begin
 			 bitcount  <= PROT_ACK;                              // ... and leave the TRN state
@@ -218,7 +218,7 @@ module swdIF (
 	       // =========================================================================================
 	       default: // Anything else ==================================================================
 		 swd_state <= ST_IDLE;
-	       
+
              endcase // case (swd_state) ==================================================================
           end // if (rising)
      end // always @ (posedge clk)
