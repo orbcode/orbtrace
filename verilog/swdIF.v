@@ -156,7 +156,8 @@ module swdIF (
                     if (bitcount==PROT_ACK_END)                                            // Have now done
                       begin
                          ack <= {swdi,rd[31:30]};                                          // Store the ACK
-			 if ({swdi,rd[31:30]}==3'b001)                                    // Its a good one
+			 if (({swdi,rd[31:30]}==3'b001) ||                             // Its a good one or
+			   ({swdi,rd[31:30]}==3'b111))                                // we got no-response
                            begin
                               if (rnw)                                               // ..and we're reading
 				begin
