@@ -583,7 +583,7 @@ class OrbSoC(SoCCore):
 
         # IAD descriptor needed on windows
         with self.usb_conf_desc.InterfaceAssociationDescriptor() as i:
-            i.bFirstInterface = 0
+            i.bFirstInterface = comm_if
             i.bInterfaceCount = 2
             i.bFunctionClass = 2 # CDC
             i.bFunctionSubclass = 2
