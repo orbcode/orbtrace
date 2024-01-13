@@ -1,5 +1,3 @@
-import uuid
-
 from orbtrace.usb_serialnumber import USBSerialNumberHandler
 from orbtrace.test_io import TestIO
 from migen import *
@@ -35,9 +33,7 @@ from .git_version import get_version, get_version_bcd
 from usb_protocol.types      import USBTransferType, USBRequestType, USBStandardRequests, USBRequestRecipient, DescriptorTypes
 from usb_protocol.emitters.descriptors import cdc
 
-#from usb_protocol.emitters   import DeviceDescriptorCollection
-
-from .microsoft_wcid import DeviceDescriptorCollection, PlatformDescriptorCollection, PlatformDescriptor, WindowsRequestHandler
+from .microsoft_wcid import DeviceDescriptorCollection
 
 from litex.soc.interconnect import stream
 from litex.soc.interconnect.stream import Endpoint, Pipeline, AsyncFIFO, ClockDomainCrossing, Converter, Multiplexer, Demultiplexer
@@ -46,58 +42,7 @@ from litex.soc.interconnect.axi import AXILiteInterface, AXILiteClockDomainCross
 from litespi.phy.generic import LiteSPIPHY
 from litespi import LiteSPI
 
-DEVICE_INTERFACE_GUID_BASE = uuid.UUID('{1c451fbb-0000-426f-bef2-93a89eb65cba}')
-
-class USBAllocator:
-    def __init__(self):
-        self._next_interface = 0
-        self._next_in_ep     = 1
-        self._next_out_ep    = 1
-        self.winusb_interfaces = []
-        self.device_interface_guids = {}
-
-    def interface(self, with_winusb=True, guid=None, guid_discriminator=None):
-        n = self._next_interface
-        self._next_interface += 1
-
-        if guid is not None and guid_discriminator is not None:
-            raise RuntimeError('Specify either guid or guid_discriminator, not both.')
-
-        if guid_discriminator is not None:
-            assert guid_discriminator <= 0xFFFF
-
-            fields = list(DEVICE_INTERFACE_GUID_BASE.fields)
-            fields[1] = guid_discriminator
-            guid = str(uuid.UUID(fields=fields))
-
-        if guid is not None:
-            if not with_winusb:
-                raise RuntimeError('guid and guid_discriminator is Windows-specific. There is no reason to apply to non-WinUSB interfaces')
-
-            guid = uuid.UUID(guid)
-
-            if guid in self.device_interface_guids.values():
-                raise RuntimeError(f'Duplicated GUID: {guid}')
-
-            self.device_interface_guids[n] = guid
-
-        if with_winusb:
-            if guid is None:
-                raise RuntimeError('Specify guid or guid_discriminator for WinUSB-capable interfaces.')
-
-            self.winusb_interfaces.append(n)
-
-        return n
-
-    def in_ep(self):
-        n = self._next_in_ep
-        self._next_in_ep += 1
-        return n
-
-    def out_ep(self):
-        n = self._next_out_ep
-        self._next_out_ep += 1
-        return n
+from .usb_allocator import USBAllocator
 
 class OrbSoC(SoCCore):
     def __init__(self, platform, sys_clk_freq, with_debug, with_trace, with_target_power, with_dfu, with_reset_csr, with_test_io, usb_vid, usb_pid, led_default, bootloader_auto_reset, **kwargs):
@@ -748,34 +693,7 @@ class OrbSoC(SoCCore):
             (setup.value == (DescriptorTypes.STRING << 8) | self.usb_serial_idx))
 
     def add_microsoft_os_2_0_descriptors(self):
-        platformDescriptors = PlatformDescriptorCollection()
-        with self.usb_descriptors.BOSDescriptor() as bos:
-            with PlatformDescriptor(bos, platform_collection = platformDescriptors) as platformDesc:
-                with platformDesc.DescriptorSetInformation() as descSetInfo:
-                    descSetInfo.bMS_VendorCode = 1
-
-                    with descSetInfo.SetHeaderDescriptor() as setHeader:
-                        with setHeader.SubsetHeaderConfiguration() as subsetConfig:
-                            subsetConfig.bConfigurationValue = 0
-
-
-                            for i in self.usb_alloc.winusb_interfaces:
-                                with subsetConfig.SubsetHeaderFunction() as subsetFunc0:
-                                    subsetFunc0.bFirstInterface = i
-                    
-                                    with subsetFunc0.FeatureCompatibleID() as compatID:
-                                        compatID.CompatibleID = 'WINUSB'
-                                        compatID.SubCompatibleID = ''
-                                    
-                                    if i in self.usb_alloc.device_interface_guids:
-                                        with subsetFunc0.FeatureRegProperty() as deviceInterfaceGUID:
-                                            deviceInterfaceGUID.wPropertyDataType = 1
-                                            deviceInterfaceGUID.PropertyName = 'DeviceInterfaceGUID'
-                                            deviceInterfaceGUID.PropertyData = '{' + str(self.usb_alloc.device_interface_guids[i]) + '}'
-
-        windowsRequestHandler = WindowsRequestHandler(platformDescriptors)
-        self.usb_control_handlers.append(windowsRequestHandler)
-
+        self.usb_alloc.create_microsoft_os_2_0_descriptors(self.usb_descriptors, self.usb_control_handlers)
 
     def add_usb_version(self):
         # USB interface.
