@@ -1,6 +1,27 @@
 from amaranth                  import *
 
+from amaranth.lib.wiring import In, Out, Signature
+
+dbgIFSignature = Signature({
+    'addr32': Out(2),
+    'rnw': Out(1),
+    'apndp': Out(1),
+    'dwrite': Out(32),
+    'dread': In(32),
+    'perr': In(1),
+    'go': Out(1),
+    'done': In(1),
+    'ack': In(3),
+    'pinsin': Out(16),
+    'pinsout': In(8),
+    'command': Out(5),
+    'dev': Out(3),
+    'is_jtag': Out(1),
+})
+
 class DBGIF(Elaboratable):
+    signature = dbgIFSignature.flip()
+
     def __init__(self, dbgif, glue):
         self.addr32       = glue.from_migen(dbgif.addr32)
         self.rnw          = glue.from_migen(dbgif.rnw)
