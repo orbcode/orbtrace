@@ -42,25 +42,25 @@ class MemRequestHandler:
 
         self.handler = usb_mem_bridge.MemRequestHandler(self._axi_lite)
     
-    def wrap(self, wrapper):
-        wrapper.connect(self.axi_lite.aw.addr, self._axi_lite.aw.addr)
-        wrapper.connect(self.axi_lite.aw.valid, self._axi_lite.aw.valid)
-        wrapper.connect(self.axi_lite.aw.ready, self._axi_lite.aw.ready)
+    def wrap(self, glue):
+        glue.connect(self.axi_lite.aw.addr, self._axi_lite.aw.addr)
+        glue.connect(self.axi_lite.aw.valid, self._axi_lite.aw.valid)
+        glue.connect(self.axi_lite.aw.ready, self._axi_lite.aw.ready)
 
-        wrapper.connect(self.axi_lite.w.data, self._axi_lite.w.data)
-        wrapper.connect(self.axi_lite.w.strb, self._axi_lite.w.strb)
-        wrapper.connect(self.axi_lite.w.valid, self._axi_lite.w.valid)
-        wrapper.connect(self.axi_lite.w.ready, self._axi_lite.w.ready)
+        glue.connect(self.axi_lite.w.data, self._axi_lite.w.data)
+        glue.connect(self.axi_lite.w.strb, self._axi_lite.w.strb)
+        glue.connect(self.axi_lite.w.valid, self._axi_lite.w.valid)
+        glue.connect(self.axi_lite.w.ready, self._axi_lite.w.ready)
 
-        wrapper.connect(self.axi_lite.b.resp, self._axi_lite.b.resp)
-        wrapper.connect(self.axi_lite.b.valid, self._axi_lite.b.valid)
-        wrapper.connect(self.axi_lite.b.ready, self._axi_lite.b.ready)
+        glue.connect(self.axi_lite.b.resp, self._axi_lite.b.resp)
+        glue.connect(self.axi_lite.b.valid, self._axi_lite.b.valid)
+        glue.connect(self.axi_lite.b.ready, self._axi_lite.b.ready)
 
-        wrapper.connect(self.axi_lite.ar.addr, self._axi_lite.ar.addr)
-        wrapper.connect(self.axi_lite.ar.valid, self._axi_lite.ar.valid)
-        wrapper.connect(self.axi_lite.ar.ready, self._axi_lite.ar.ready)
+        glue.connect(self.axi_lite.ar.addr, self._axi_lite.ar.addr)
+        glue.connect(self.axi_lite.ar.valid, self._axi_lite.ar.valid)
+        glue.connect(self.axi_lite.ar.ready, self._axi_lite.ar.ready)
 
-        wrapper.connect(self.axi_lite.r.resp, self._axi_lite.r.resp)
-        wrapper.connect(self.axi_lite.r.data, self._axi_lite.r.data)
-        wrapper.connect(self.axi_lite.r.valid, self._axi_lite.r.valid)
-        wrapper.connect(self.axi_lite.r.ready, self._axi_lite.r.ready)
+        glue.connect(self.axi_lite.r.resp, self._axi_lite.r.resp)
+        glue.connect(self.axi_lite.r.data, self._axi_lite.r.data)
+        glue.connect(self.axi_lite.r.valid, self._axi_lite.r.valid)
+        glue.connect(self.axi_lite.r.ready, self._axi_lite.r.ready)

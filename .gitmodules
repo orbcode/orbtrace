@@ -31,3 +31,6 @@
 [submodule "deps/litehyperbus"]
 	path = deps/litehyperbus
 	url = https://github.com/litex-hub/litehyperbus.git
+[submodule "deps/zyp-amaranth-libs"]
+	path = deps/zyp-amaranth-libs
+	url = https://github.com/zyp/zyp-amaranth-libs.git

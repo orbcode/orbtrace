@@ -1,5 +1,3 @@
-from .wrapper import Wrapper
-
 import amaranth
 import migen
 
@@ -9,14 +7,14 @@ from luna.gateware.architecture.car import PHYResetController
 from litex.soc.interconnect.stream import Endpoint
 
 class USBDevice(migen.Module):
-    def __init__(self, pads, wrapper, *args, **kwargs):
-        self.wrapper = wrapper
+    def __init__(self, pads, glue, *args, **kwargs):
+        self.glue = glue
 
         phy_reset_controller = PHYResetController()
-        wrapper.m.submodules += phy_reset_controller
+        glue.m.submodules += phy_reset_controller
 
         if hasattr(pads, 'clk'):
-            wrapper.m.d.comb += [
+            glue.m.d.comb += [
                 amaranth.ResetSignal('usb').eq(phy_reset_controller.phy_reset),
             ]
 
@@ -45,30 +43,30 @@ class USBDevice(migen.Module):
             ],
         )
 
-        wrapper.connect(ulpi_data.i, ulpi.data.i)
-        wrapper.connect(ulpi_data.o, ulpi.data.o)
-        wrapper.connect(ulpi_data.oe, ulpi.data.oe)
+        glue.connect(ulpi_data.i, ulpi.data.i)
+        glue.connect(ulpi_data.o, ulpi.data.o)
+        glue.connect(ulpi_data.oe, ulpi.data.oe)
 
-        wrapper.connect(pads.stp, ulpi.stp)
-        wrapper.connect(pads.nxt, ulpi.nxt.i)
-        wrapper.connect(pads.dir, ulpi.dir.i)
-        wrapper.connect(ulpi_rst, ulpi.rst)
+        glue.connect(pads.stp, ulpi.stp)
+        glue.connect(pads.nxt, ulpi.nxt.i)
+        glue.connect(pads.dir, ulpi.dir.i)
+        glue.connect(ulpi_rst, ulpi.rst)
 
         if hasattr(pads, 'clk'):
-            wrapper.connect(pads.clk, ulpi.clk.i)
+            glue.connect(pads.clk, ulpi.clk.i)
         else:
-            wrapper.connect(pads.clk_o, ulpi.clk.o)
+            glue.connect(pads.clk_o, ulpi.clk.o)
 
         self.usb = luna.usb2.USBDevice(bus = ulpi, *args, **kwargs)
-        wrapper.m.submodules += self.usb
+        glue.m.submodules += self.usb
 
-        wrapper.m.d.comb += [
+        glue.m.d.comb += [
             self.usb.connect.eq(1),
         ]
 
     def add_endpoint(self, ep):
         self.usb.add_endpoint(ep._ep)
-        ep.wrap(self.wrapper)
+        ep.wrap(self.glue)
 
 class USBStreamOutEndpoint:
     def __init__(self, *, endpoint_number, **kwargs):
@@ -76,12 +74,12 @@ class USBStreamOutEndpoint:
 
         self.source = Endpoint([('data', 8)])
     
-    def wrap(self, wrapper):
-        wrapper.connect(self.source.data, self._ep.stream.payload)
-        wrapper.connect(self.source.first, self._ep.stream.first)
-        wrapper.connect(self.source.last, self._ep.stream.last)
-        wrapper.connect(self.source.valid, self._ep.stream.valid)
-        wrapper.connect(self.source.ready, self._ep.stream.ready)
+    def wrap(self, glue):
+        glue.connect(self.source.data, self._ep.stream.payload)
+        glue.connect(self.source.first, self._ep.stream.first)
+        glue.connect(self.source.last, self._ep.stream.last)
+        glue.connect(self.source.valid, self._ep.stream.valid)
+        glue.connect(self.source.ready, self._ep.stream.ready)
 
 class USBStreamInEndpoint:
     def __init__(self, *, endpoint_number, **kwargs):
@@ -89,12 +87,12 @@ class USBStreamInEndpoint:
 
         self.sink = Endpoint([('data', 8)])
     
-    def wrap(self, wrapper):
-        wrapper.connect(self.sink.data, self._ep.stream.payload)
-        wrapper.connect(self.sink.first, self._ep.stream.first)
-        wrapper.connect(self.sink.last, self._ep.stream.last)
-        wrapper.connect(self.sink.valid, self._ep.stream.valid)
-        wrapper.connect(self.sink.ready, self._ep.stream.ready)
+    def wrap(self, glue):
+        glue.connect(self.sink.data, self._ep.stream.payload)
+        glue.connect(self.sink.first, self._ep.stream.first)
+        glue.connect(self.sink.last, self._ep.stream.last)
+        glue.connect(self.sink.valid, self._ep.stream.valid)
+        glue.connect(self.sink.ready, self._ep.stream.ready)
 
 class USBMultibyteStreamInEndpoint:
     def __init__(self, *, endpoint_number, byte_width, **kwargs):
@@ -102,9 +100,9 @@ class USBMultibyteStreamInEndpoint:
 
         self.sink = Endpoint([('data', 8 * byte_width)])
     
-    def wrap(self, wrapper):
-        wrapper.connect(self.sink.data, self._ep.stream.payload)
-        wrapper.connect(self.sink.first, self._ep.stream.first)
-        wrapper.connect(self.sink.last, self._ep.stream.last)
-        wrapper.connect(self.sink.valid, self._ep.stream.valid)
-        wrapper.connect(self.sink.ready, self._ep.stream.ready)
+    def wrap(self, glue):
+        glue.connect(self.sink.data, self._ep.stream.payload)
+        glue.connect(self.sink.first, self._ep.stream.first)
+        glue.connect(self.sink.last, self._ep.stream.last)
+        glue.connect(self.sink.valid, self._ep.stream.valid)
+        glue.connect(self.sink.ready, self._ep.stream.ready)

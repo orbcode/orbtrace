@@ -13,7 +13,7 @@ from .trace.usb_handler import TraceUSBHandler
 
 from .power.usb_handler import PowerUSBHandler
 
-from .amaranth_glue.wrapper import Wrapper
+from zyp_amaranth_libs.litex_glue import Glue
 from .amaranth_glue.luna import USBDevice, USBStreamOutEndpoint, USBStreamInEndpoint, USBMultibyteStreamInEndpoint
 from .amaranth_glue.usb_mem_bridge import MemRequestHandler
 from .debug import DBGIF, CMSIS_DAP
@@ -105,8 +105,8 @@ class OrbSoC(SoCCore):
         # Flash
         self.add_flash()
 
-        # Amaranth wrapper
-        self.add_wrapper()
+        # Amaranth glue
+        self.add_glue()
 
         # LEDs
         self.add_leds(led_default)
@@ -265,10 +265,10 @@ class OrbSoC(SoCCore):
         self.add_usb_control_handler(handler)
 
         self.comb += [
-            pads.vtref_en.eq(self.wrapper.from_amaranth(handler.vtref_en)),
-            pads.vtref_sel.eq(self.wrapper.from_amaranth(handler.vtref_sel)),
-            pads.vtpwr_en.eq(self.wrapper.from_amaranth(handler.vtpwr_en)),
-            pads.vtpwr_sel.eq(self.wrapper.from_amaranth(handler.vtpwr_sel)),
+            pads.vtref_en.eq(self.glue.from_amaranth(handler.vtref_en)),
+            pads.vtref_sel.eq(self.glue.from_amaranth(handler.vtref_sel)),
+            pads.vtpwr_en.eq(self.glue.from_amaranth(handler.vtpwr_en)),
+            pads.vtpwr_sel.eq(self.glue.from_amaranth(handler.vtpwr_sel)),
 
             self.led_vtref.b.eq(pads.vtref_en),
             self.led_vtref.g.eq(pads.vtref_en & pads.vtref_sel),
@@ -280,7 +280,7 @@ class OrbSoC(SoCCore):
     def add_debug(self):
         # PHY clock.
         self.crg.add_debug()
-        self.wrapper.connect_domain('debug')
+        self.glue.connect_domain('debug')
 
         # Add verilog sources.
         self.platform.add_source('verilog/dbgIF.v')
@@ -295,7 +295,7 @@ class OrbSoC(SoCCore):
 
     def add_cmsis_dap(self, with_v1 = True, with_v2 = True):
         # CMSIS-DAP.
-        self.submodules.cmsis_dap = CMSIS_DAP(self.dbgif, wrapper = self.wrapper)
+        self.submodules.cmsis_dap = CMSIS_DAP(self.dbgif, glue = self.glue)
 
         # LEDs
         if hasattr(self, 'led_debug'):
@@ -503,12 +503,12 @@ class OrbSoC(SoCCore):
 
         self.add_usb_control_handler(handler)
 
-        self.comb += self.trace.input_format.eq(self.wrapper.from_amaranth(handler.input_format))
+        self.comb += self.trace.input_format.eq(self.glue.from_amaranth(handler.input_format))
 
         self.submodules.async_baudrate_ps = PulseSynchronizer('usb', 'sys')
         self.comb += [
-            self.trace.async_baudrate.eq(self.wrapper.from_amaranth(handler.async_baudrate)),
-            self.async_baudrate_ps.i.eq(self.wrapper.from_amaranth(handler.async_baudrate_strobe)),
+            self.trace.async_baudrate.eq(self.glue.from_amaranth(handler.async_baudrate)),
+            self.async_baudrate_ps.i.eq(self.glue.from_amaranth(handler.async_baudrate_strobe)),
             self.trace.async_baudrate_strobe.eq(self.async_baudrate_ps.o),
         ]
 
@@ -659,7 +659,7 @@ class OrbSoC(SoCCore):
 
         self.add_usb_control_handler(mem_request_handler.handler) # FIXME: wrap
 
-        mem_request_handler.wrap(self.usb.wrapper) # FIXME: wrap
+        mem_request_handler.wrap(self.usb.glue) # FIXME: wrap
 
         axi_lite = AXILiteInterface()
 
@@ -704,7 +704,7 @@ class OrbSoC(SoCCore):
 
         self.add_usb_control_handler(dfu_handler.handler) # FIXME: wrap
 
-        dfu_handler.wrap(self.wrapper)
+        dfu_handler.wrap(self.glue)
 
         self.submodules.flashwriter = FlashWriter()
 
@@ -726,7 +726,7 @@ class OrbSoC(SoCCore):
 
         self.add_usb_control_handler(handler)
 
-        self.comb += self.wrapper.from_amaranth(handler.serial).eq(self.flash_uid.uid)
+        self.comb += self.glue.from_amaranth(handler.serial).eq(self.flash_uid.uid)
 
         self.usb_blacklist.append(lambda setup: \
             (setup.type == USBRequestType.STANDARD) & \
@@ -787,9 +787,9 @@ class OrbSoC(SoCCore):
     def add_usb(self, vid, pid):
         self.usb_alloc = USBAllocator()
 
-        self.wrapper.connect_domain('usb')
+        self.glue.connect_domain('usb')
 
-        self.submodules.usb = USBDevice(self.platform.request('ulpi'), wrapper = self.wrapper)
+        self.submodules.usb = USBDevice(self.platform.request('ulpi'), glue = self.glue)
 
         self.usb_descriptors = DeviceDescriptorCollection()
 
@@ -834,10 +834,10 @@ class OrbSoC(SoCCore):
         for handler in self.usb_control_handlers:
             self.usb_control_ep.add_request_handler(handler)
 
-    def add_wrapper(self):
-        self.submodules.wrapper = Wrapper(self.platform)
+    def add_glue(self):
+        self.submodules.glue = Glue(self.platform)
 
-        self.wrapper.connect_domain('sys')
+        self.glue.connect_domain('sys')
 
     def add_platform_specific(self):
         if hasattr(self.platform, 'add_platform_specific'):
