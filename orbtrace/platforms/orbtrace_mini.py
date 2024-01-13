@@ -3,6 +3,7 @@ from litex.build.lattice import LatticePlatform
 from litex.build.openfpgaloader import OpenFPGALoader
 
 from litex.soc.cores.bitbang import I2CMaster
+from litex.soc.integration.soc import SoCRegion
 
 from ..crg_ecp5 import CRG
 
@@ -189,7 +190,7 @@ class Platform(LatticePlatform):
 
         soc.submodules.hyperram = cdr(HyperRAM(pads))
         soc.add_csr('hyperram')
-        soc.register_mem('hyperram', soc.mem_map.get('hyperram', 0x20000000), soc.hyperram.bus, size = 0x800000)
+        soc.bus.add_slave('hyperram', soc.hyperram.bus, SoCRegion(origin = soc.mem_map.get('hyperram', 0x20000000), size = 0x800000))
 
         soc.comb += pads.rst_n.eq(1)
 

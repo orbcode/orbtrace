@@ -24,7 +24,7 @@ class USBSerialNumberHandler(USBRequestHandler):
         pos = Signal(range(0, self.data_length))
         data = Signal(8)
 
-        nibble_sel = (self.data_length - 1 - pos) >> 1
+        nibble_sel = (self.data_length - 1 - pos).as_unsigned() >> 1
         nibble = self.serial.word_select(nibble_sel, 4)
 
         with m.If(pos == 0):

@@ -665,7 +665,7 @@ class CMSIS_DAP(Elaboratable):
                 with m.If(self.streamOut.valid & self.streamOut.ready):
                     m.d.sync+=[
                         # Beware, state used to select byte in word construction
-                        self.tfrData.word_select(self.tfr_txb.bit_select(0,3)-2,8).eq(self.streamOut.payload),
+                        self.tfrData.word_select((self.tfr_txb.bit_select(0,3)-2).as_unsigned(),8).eq(self.streamOut.payload),
                         self.tfr_txb.eq(self.tfr_txb+1)
                     ]
 
@@ -747,7 +747,7 @@ class CMSIS_DAP(Elaboratable):
             with m.Case(10,11,12):
                 with m.If(self.streamIn.ready):
                     m.d.sync += [
-                        self.streamIn.payload.eq(self.txBlock.word_select(self.tfr_txb-10,8)),
+                        self.streamIn.payload.eq(self.txBlock.word_select((self.tfr_txb-10).as_unsigned(),8)),
                         self.streamIn.valid.eq(1),
                         self.tfr_txb.eq(self.tfr_txb+1),
                         self.streamIn.last.eq(self.isV2 & (self.tfr_txb==12) & (self.tfrram.adr==0))
@@ -941,7 +941,7 @@ class CMSIS_DAP(Elaboratable):
                 with m.If(self.streamIn.ready & self.streamIn.valid):
                     m.d.sync += [
                         self.txb.eq(self.txb+1),
-                        self.streamIn.payload.eq(self.tfrram.dat_r.word_select(self.txb-2,8)),
+                        self.streamIn.payload.eq(self.tfrram.dat_r.word_select((self.txb-2).as_unsigned(),8)),
                         # 5 because of pipeline
                         self.streamIn.last.eq(self.isV2 & (~self.transferCCount.bool()) & (self.txb==5)),
                         self.streamIn.valid.eq(self.txb!=6)

@@ -223,7 +223,7 @@ class GetDescriptorSetHandler(Elaboratable):
 				m.d.comb += [
 					self.tx.valid.eq(1),
 					readPort.addr.eq(descriptorDataBaseAddress + wordInStream),
-					self.tx.payload.eq(readPort.data.word_select(3 - byteInStream, 8)),
+					self.tx.payload.eq(readPort.data.word_select(~byteInStream, 8)),
 					self.tx.first.eq(onFirstPacket),
 					self.tx.last.eq(onLastPacket),
 				]

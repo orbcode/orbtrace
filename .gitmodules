@@ -1,9 +1,6 @@
 [submodule "deps/amaranth"]
 	path = deps/amaranth
 	url = https://github.com/amaranth-lang/amaranth.git
-[submodule "deps/amaranth-boards"]
-	path = deps/amaranth-boards
-	url = https://github.com/amaranth-lang/amaranth-boards.git
 [submodule "deps/python-usb-protocol"]
 	path = deps/python-usb-protocol
 	url = https://github.com/usb-tools/python-usb-protocol.git
