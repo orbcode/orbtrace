@@ -156,9 +156,9 @@ module swdIF (
                     if (bitcount==PROT_ACK_END)                                            // Have now done
                       begin
                          ack <= {swdi,rd[31:30]};                                          // Store the ACK
-			 if ({swdi,rd[31:30]}==3'b001)                                    // Its a good one
+			 if ({swdi,rd[31:30]}!=3'b010)                                    // Its not a wait
                            begin
-                              if (rnw)                                               // ..and we're reading
+                              if ((rnw) || ({swdi,rd[31:30]}!=3'b001))       // ..and we're reading or duff
 				begin
 				   bitcount <= PROT_DATA;
                                    swd_state <= ST_DATA;
@@ -167,14 +167,14 @@ module swdIF (
                                 begin
                                    spincount <= turnaround;                         // Otherwise, its write
                                    swd_state <= ST_TRN2;                                 // ..so turn again
-                                end // else: !if(rnw)
+                                end // else: !if((rnw) || ({swdi,rd[31:30]}!=3'b001))
                            end
-                         else     // Wasn't good, give up and return idle, via cooloff
+                         else                           // Was a wait, give up and return idle, via cooloff
                            begin
                               bitcount  <= PROT_EOF;
                               spincount <= dataphase?34:2;                                // Extended cool?
                               swd_state <= ST_COOLING;                                   // Go and cool off
-                           end // else: !if({swdi,rd[31:30]}==3'b001)
+                           end // else: !if({swdi,rd[31:30]}==3'b010)
                       end // if (bitcount==PROT_ACK_END)
                  end // case: ST_ACK
 
