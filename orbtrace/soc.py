@@ -479,7 +479,7 @@ class OrbSoC(SoCCore):
             i.bInterfaceNumber   = if_num
             i.bInterfaceClass    = 0xff
             i.bInterfaceSubclass = 0x54
-            i.bInterfaceProtocol = 0x00
+            i.bInterfaceProtocol = 0x10
 
             i.iInterface = 'Trace'
 
