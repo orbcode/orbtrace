@@ -312,6 +312,7 @@ class TraceCore(Module):
             #pv := PipeValid([('data', 128)]),
             #Converter(128, 8),
             tpiu.TPIUDemux(),
+            cobs.ChecksumAppender(),
             cobs.COBSEncoder(),
             cobs.DelimiterAppender(),
             cobs.SuperFramer(7500000, 65536),

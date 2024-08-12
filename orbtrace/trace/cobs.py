@@ -116,6 +116,38 @@ class COBSEncoder(Module):
             self.group_combiner.source.connect(self.source),
         ]
 
+class ChecksumAppender(Module):
+    def __init__(self):
+        self.sink = stream.Endpoint([('data', 8)])
+        self.source = stream.Endpoint([('data', 8)])
+
+        self.submodules.fsm = fsm = FSM()
+
+        checksum = Signal(8)
+
+        fsm.act('DATA',
+            self.sink.connect(self.source, omit = {'last'}),
+
+            If(self.sink.valid & self.sink.ready,
+                NextValue(checksum, checksum - self.sink.data),
+            ),
+
+            If(self.sink.valid & self.sink.ready & self.sink.last,
+                NextState('CHECKSUM'),
+            ),
+        )
+
+        fsm.act('CHECKSUM',
+            self.source.data.eq(checksum),
+            self.source.last.eq(1),
+            self.source.valid.eq(1),
+
+            If(self.source.ready,
+                NextState('DATA'),
+                NextValue(checksum, 0),
+            ),
+        )
+
 class DelimiterAppender(Module):
     def __init__(self, delimiter = 0):
         self.sink = stream.Endpoint([('data', 8)])
