@@ -158,7 +158,10 @@ class LastFromFirst(Module):
 class TPIUDemux(Module):
     def __init__(self):
         self.sink = sink = Endpoint([('data', 128)])
+        self.bypass_sink = bypass_sink = Endpoint([('data', 8)])
         self.source = source = Endpoint([('data', 8)])
+
+        self.bypass = Signal()
 
         self.submodules.rearrange = Rearrange()
         self.submodules.converter = Converter(135, 9)
@@ -168,17 +171,59 @@ class TPIUDemux(Module):
         self.submodules.packetizer = Packetizer()
         self.submodules.last_from_first = LastFromFirst()
 
-        self.submodules.pipeline = Pipeline(
+        self.submodules += Pipeline(
             sink,
             self.rearrange,
             self.converter,
             self.track_stream,
             #self.demux,
             self.strip_channel_zero,
+        )
+
+        self.submodules += Pipeline(
             self.packetizer,
             self.last_from_first,
             source,
         )
 
+        self.comb += If(self.bypass,
+            bypass_sink.ready.eq(self.packetizer.sink.ready),
+            self.packetizer.sink.valid.eq(bypass_sink.valid),
+            self.packetizer.sink.data.eq(bypass_sink.data),
+            self.packetizer.sink.channel.eq(1),
+        ).Else(
+            self.strip_channel_zero.source.connect(self.packetizer.sink),
+        )
+
         #self.comb += self.demux.source_etm.connect(source)
         #self.comb += self.demux.source_itm.ready.eq(1)
+
+class TPIUSync(Module):
+    def __init__(self):
+        self.sink = sink = Endpoint([('data', 8)])
+        self.source = source = Endpoint([('data', 128)])
+
+        buf = Signal(129, reset = 1)
+
+        self.comb += [
+            source.valid.eq(buf[128]),
+            source.data.eq(buf),
+            sink.ready.eq(~source.valid),
+        ]
+
+        self.sync += If(source.valid & source.ready,
+            buf.eq(1),
+        )
+
+        self.sync += If(sink.valid & sink.ready,
+            If(Cat(sink.data, buf)[:32] == 0xffffff7f,
+                # Full sync, reset buffer.
+                buf.eq(1),
+            ).Elif(Cat(sink.data, buf)[:16] == 0xff7f,
+                # Half sync, drop previous byte from buffer.
+                buf.eq(buf[8:]),
+            ).Else(
+                # Regular byte, add to buffer.
+                buf.eq(Cat(sink.data, buf)),
+            )
+        )

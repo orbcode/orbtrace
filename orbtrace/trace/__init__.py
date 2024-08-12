@@ -254,6 +254,7 @@ class TraceCore(Module):
         swo_manchester = Signal()
         swo_nrz = Signal()
         swo_tpiu = Signal()
+        swo_itm = Signal()
 
         self.comb += Case(self.input_format, {
             0x01: [
@@ -271,6 +272,7 @@ class TraceCore(Module):
             0x10: [
                 swo_active.eq(1),
                 swo_manchester.eq(1),
+                swo_itm.eq(1),
             ],
             0x11: [
                 swo_active.eq(1),
@@ -280,6 +282,7 @@ class TraceCore(Module):
             0x12: [
                 swo_active.eq(1),
                 swo_nrz.eq(1),
+                swo_itm.eq(1),
             ],
             0x13: [
                 swo_active.eq(1),
@@ -307,20 +310,11 @@ class TraceCore(Module):
         trace_pipeline = [
             phy := ClockDomainsRenamer('trace')(TracePHY(trace_pads)),
             ClockDomainsRenamer({'write': 'trace', 'read': 'sys'})(AsyncFIFO([('data', 128)], 4)),
-            ByteSwap(16),
-            #injector := Injector(),
-            #pv := PipeValid([('data', 128)]),
-            #Converter(128, 8),
-            tpiu.TPIUDemux(),
-            cobs.ChecksumAppender(),
-            cobs.COBSEncoder(),
-            cobs.DelimiterAppender(),
-            cobs.SuperFramer(7500000, 65536),
         ]
 
         #pv.comb += pv.source.last.eq(1)
 
-        trace_stream = Endpoint([('data', 8)])
+        trace_stream = Endpoint([('data', 128)])
 
         self.submodules += [*trace_pipeline, Pipeline(*trace_pipeline, trace_stream)]
 
@@ -370,7 +364,7 @@ class TraceCore(Module):
         swo_stream_backend_source = Endpoint([('data', 8)])
         swo_pipeline_backend = [
             ClockDomainsRenamer({'write': 'swo', 'read': 'sys'})(AsyncFIFO([('data', 8)], 4)),
-            StreamFlush(7500000),
+            #StreamFlush(7500000),
         ]
         self.submodules += [*swo_pipeline_backend, Pipeline(swo_stream_backend_sink, *swo_pipeline_backend, swo_stream_backend_source)]
 
@@ -393,18 +387,30 @@ class TraceCore(Module):
         self.submodules.swo_overrun_indicator = Indicator(swo_monitor.lost, 7500000)
         self.submodules.swo_data_indicator = Indicator(swo_monitor.total, 7500000)
 
-        # Output mux and FIFO
-        fifo = SyncFIFO([('data', 8)], 8192, buffered = True)
+        # Orbflow pipeline
+        orbflow_pipeline_sink = Endpoint([('data', 128)])
+        orbflow_pipeline = [
+            ByteSwap(16),
+            tpiu_demux := tpiu.TPIUDemux(),
+            cobs.ChecksumAppender(),
+            cobs.COBSEncoder(),
+            cobs.DelimiterAppender(),
+            cobs.SuperFramer(7500000, 65536),
+            SyncFIFO([('data', 8)], 8192, buffered = True),
+        ]
+        self.submodules += [*orbflow_pipeline, Pipeline(orbflow_pipeline_sink, *orbflow_pipeline, source)]
 
+        self.submodules.swo_tpiu_sync = swo_tpiu_sync = tpiu.TPIUSync()
+
+        # Output mux
         self.comb += [
             If(trace_active,
-                trace_stream.connect(fifo.sink),
+                trace_stream.connect(orbflow_pipeline_sink),
                 self.led_overrun.eq(self.overrun_indicator.out),
                 self.led_data.eq(self.data_indicator.out),
                 self.led_clk.eq(self.clk_indicator.out),
             ),
             If(swo_active,
-                swo_stream_backend_source.connect(fifo.sink),
                 self.led_overrun.eq(self.swo_overrun_indicator.out),
                 self.led_data.eq(self.swo_data_indicator.out),
             ),
@@ -416,10 +422,15 @@ class TraceCore(Module):
                 swo_stream_frontend_source.connect(swo_stream_nrz_sink),
                 swo_stream_nrz_source.connect(swo_stream_backend_sink),
             ),
-            fifo.source.connect(source),
+            If(swo_tpiu,
+                swo_stream_backend_source.connect(swo_tpiu_sync.sink),
+                swo_tpiu_sync.source.connect(orbflow_pipeline_sink),
+            ),
+            If(swo_itm,
+                swo_stream_backend_source.connect(tpiu_demux.bypass_sink),
+                tpiu_demux.bypass.eq(1),
+            ),
         ]
-
-        self.submodules += fifo
 
         # Add verilog sources.
         platform.add_source('verilog/traceIF.v') # TODO: make sure the path is correct
