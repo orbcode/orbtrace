@@ -503,7 +503,12 @@ class OrbSoC(SoCCore):
 
         self.add_usb_control_handler(handler)
 
-        self.comb += self.trace.input_format.eq(self.wrapper.from_amaranth(handler.input_format))
+        self.submodules.input_format_ps = PulseSynchronizer('usb', 'sys')
+        self.comb += [
+            self.trace.input_format.eq(self.wrapper.from_amaranth(handler.input_format)),
+            self.input_format_ps.i.eq(self.wrapper.from_amaranth(handler.input_format_strobe)),
+            self.trace.input_format_strobe.eq(self.input_format_ps.o),
+        ]
 
         self.submodules.async_baudrate_ps = PulseSynchronizer('usb', 'sys')
         self.comb += [

@@ -10,6 +10,7 @@ class TraceUSBHandler(USBRequestHandler):
         self.proxy_if_num = proxy_if_num
 
         self.input_format = Signal(8)
+        self.input_format_strobe = Signal()
         self.async_baudrate = Signal(32)
         self.async_baudrate_strobe = Signal()
 
@@ -28,6 +29,7 @@ class TraceUSBHandler(USBRequestHandler):
         m.d.usb += self.input_format.eq(self.interface.setup.value)
 
         with m.If(self.interface.status_requested):
+            m.d.comb += self.input_format_strobe.eq(1)
             m.d.comb += self.send_zlp()
             m.d.comb += self.request_done.eq(1)
 

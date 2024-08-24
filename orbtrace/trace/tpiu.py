@@ -202,11 +202,13 @@ class TPIUSync(Module):
     def __init__(self):
         self.sink = sink = Endpoint([('data', 8)])
         self.source = source = Endpoint([('data', 128)])
+        self.reset_sync = Signal()
 
         buf = Signal(129, reset = 1)
+        synced = Signal()
 
         self.comb += [
-            source.valid.eq(buf[128]),
+            source.valid.eq(buf[128] & synced),
             source.data.eq(buf),
             sink.ready.eq(~source.valid),
         ]
@@ -218,6 +220,7 @@ class TPIUSync(Module):
         self.sync += If(sink.valid & sink.ready,
             If(Cat(sink.data, buf)[:32] == 0xffffff7f,
                 # Full sync, reset buffer.
+                synced.eq(1),
                 buf.eq(1),
             ).Elif(Cat(sink.data, buf)[:16] == 0xff7f,
                 # Half sync, drop previous byte from buffer.
@@ -226,4 +229,8 @@ class TPIUSync(Module):
                 # Regular byte, add to buffer.
                 buf.eq(Cat(sink.data, buf)),
             )
+        )
+
+        self.sync += If(self.reset_sync,
+            synced.eq(0),
         )

@@ -247,6 +247,7 @@ class TraceCore(Module):
 
         # Input format.
         self.input_format = Signal(8)
+        self.input_format_strobe = Signal()
 
         trace_active = Signal()
         trace_width = Signal(2)
@@ -401,6 +402,8 @@ class TraceCore(Module):
         self.submodules += [*orbflow_pipeline, Pipeline(orbflow_pipeline_sink, *orbflow_pipeline, source)]
 
         self.submodules.swo_tpiu_sync = swo_tpiu_sync = tpiu.TPIUSync()
+
+        self.comb += swo_tpiu_sync.reset_sync.eq(self.input_format_strobe)
 
         # Output mux
         self.comb += [
