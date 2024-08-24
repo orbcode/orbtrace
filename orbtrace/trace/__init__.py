@@ -372,7 +372,7 @@ class TraceCore(Module):
         self.comb += nrz_decoder.bitlen.eq(self.async_bitlen)
 
         # SWO monitoring.
-        swo_monitor = Monitor(swo_stream_backend_source, 'swo')
+        swo_monitor = Monitor(swo_stream_backend_sink, 'swo')
         self.submodules += swo_monitor
 
         # Indicators
