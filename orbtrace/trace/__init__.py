@@ -364,7 +364,7 @@ class TraceCore(Module):
         swo_stream_backend_sink = Endpoint([('data', 8)])
         swo_stream_backend_source = Endpoint([('data', 8)])
         swo_pipeline_backend = [
-            ClockDomainsRenamer({'write': 'swo', 'read': 'sys'})(AsyncFIFO([('data', 8)], 4)),
+            ClockDomainsRenamer({'write': 'swo', 'read': 'sys'})(AsyncFIFO([('data', 8)], 16)),
             #StreamFlush(7500000),
         ]
         self.submodules += [*swo_pipeline_backend, Pipeline(swo_stream_backend_sink, *swo_pipeline_backend, swo_stream_backend_source)]
