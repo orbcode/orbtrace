@@ -56,28 +56,36 @@ class USBAllocator:
         self.winusb_interfaces = []
         self.device_interface_guids = {}
 
-    def interface(self, with_winusb=True, guid_discriminator=None):
+    def interface(self, with_winusb=True, guid=None, guid_discriminator=None):
         n = self._next_interface
         self._next_interface += 1
-        if with_winusb:
-            if guid_discriminator is None:
-                raise RuntimeError('Specify guid_discriminator for WinUSB-capable interfaces.')
 
-            self.winusb_interfaces.append(n)
+        if guid is not None and guid_discriminator is not None:
+            raise RuntimeError('Specify either guid or guid_discriminator, not both.')
 
         if guid_discriminator is not None:
-            if not with_winusb:
-                raise RuntimeError('guid_discriminator is Windows-specific. There is no reason to apply to non-WinUSB interfaces')
-
             assert guid_discriminator <= 0xFFFF
 
             fields = list(DEVICE_INTERFACE_GUID_BASE.fields)
             fields[1] = guid_discriminator
-            new_uuid = uuid.UUID(fields=fields)
-            if new_uuid in self.device_interface_guids.values():
-                raise RuntimeError(f'Duplicated GUID discriminator: 0x{guid_discriminator:02X}')
+            guid = str(uuid.UUID(fields=fields))
 
-            self.device_interface_guids[n] = new_uuid
+        if guid is not None:
+            if not with_winusb:
+                raise RuntimeError('guid and guid_discriminator is Windows-specific. There is no reason to apply to non-WinUSB interfaces')
+
+            guid = uuid.UUID(guid)
+
+            if guid in self.device_interface_guids.values():
+                raise RuntimeError(f'Duplicated GUID: {guid}')
+
+            self.device_interface_guids[n] = guid
+
+        if with_winusb:
+            if guid is None:
+                raise RuntimeError('Specify guid or guid_discriminator for WinUSB-capable interfaces.')
+
+            self.winusb_interfaces.append(n)
 
         return n
 
@@ -355,7 +363,7 @@ class OrbSoC(SoCCore):
 
         if with_v2:
             # USB interface.
-            if_num = self.usb_alloc.interface(guid_discriminator=0x80_43)
+            if_num = self.usb_alloc.interface(guid='cdb3b5ad-293b-4663-aa36-1aae46463776')
             in_ep_num = self.usb_alloc.in_ep()
             out_ep_num = self.usb_alloc.out_ep()
 
