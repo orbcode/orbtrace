@@ -93,67 +93,71 @@ class Packetizer(Module):
         self.source = source = Endpoint([('data', 8)])
 
         max_size = 1024
+        timeout = 7500000
 
         channel = Signal(7)
+        data = Signal(8)
         byte_cnt = Signal(max = max_size)
+        timeout_cnt = Signal(max = timeout + 1)
 
         start_new_packet = Signal()
 
-        self.comb += start_new_packet.eq((sink.channel != channel) | (byte_cnt >= max_size - 1))
+        self.comb += start_new_packet.eq(
+            (sink.valid & (sink.channel != channel)) |
+            (byte_cnt >= max_size - 1) |
+            (timeout_cnt == 0))
+
+        self.sync += [
+            If(timeout_cnt,
+                timeout_cnt.eq(timeout_cnt - 1),
+            ),
+            If(sink.valid,
+                timeout_cnt.eq(timeout),
+            )
+        ]
 
         self.submodules.fsm = fsm = FSM()
 
-        fsm.act('DATA',
-            source.data.eq(sink.data),
-            source.valid.eq(sink.valid & ~start_new_packet),
-            sink.ready.eq(source.ready & ~start_new_packet),
+        fsm.act('HEADER',
+            source.data.eq(sink.channel),
+            source.first.eq(1),
+            source.valid.eq(sink.valid),
+            sink.ready.eq(source.ready),
 
-            If(sink.valid & start_new_packet,
-                NextState('HEADER'),
+            If(sink.valid & sink.ready,
+                NextState('DATA'),
                 NextValue(channel, sink.channel),
+                NextValue(byte_cnt, 0),
+                NextValue(data, sink.data),
+            ),
+        )
+
+        fsm.act('DATA',
+            source.data.eq(data),
+            source.valid.eq(sink.valid),
+            sink.ready.eq(source.ready),
+
+            If(start_new_packet,
+                source.valid.eq(0),
+                sink.ready.eq(0),
+                NextState('END'),
             ),
 
             If(sink.valid & sink.ready,
+                NextValue(data, sink.data),
                 NextValue(byte_cnt, byte_cnt + 1),
             ),
         )
 
-        fsm.act('HEADER',
-            source.data.eq(channel),
-            source.first.eq(1),
+        fsm.act('END',
+            source.data.eq(data),
+            source.last.eq(1),
             source.valid.eq(1),
-
+        
             If(source.ready,
-                NextState('DATA'),
-                NextValue(byte_cnt, 0),
+                NextState('HEADER'),
             ),
         )
-
-class LastFromFirst(Module):
-    def __init__(self):
-        self.sink = sink = Endpoint([('data', 8)])
-        self.source = source = Endpoint([('data', 8)])
-
-        data = Signal(8)
-        first = Signal()
-        valid = Signal()
-
-        self.comb += [
-            sink.ready.eq(~valid | (source.ready & source.valid)),
-
-            source.data.eq(data),
-            source.first.eq(first),
-            source.last.eq(sink.first),
-            source.valid.eq(valid & sink.valid),
-        ]
-
-        self.sync += [
-            If(sink.ready & sink.valid,
-                data.eq(sink.data),
-                first.eq(sink.first),
-                valid.eq(1),
-            ),
-        ]
 
 class TPIUDemux(Module):
     def __init__(self):
@@ -169,7 +173,6 @@ class TPIUDemux(Module):
         self.submodules.demux = Demux()
         self.submodules.strip_channel_zero = StripChannelZero()
         self.submodules.packetizer = Packetizer()
-        self.submodules.last_from_first = LastFromFirst()
 
         self.submodules += Pipeline(
             sink,
@@ -182,7 +185,6 @@ class TPIUDemux(Module):
 
         self.submodules += Pipeline(
             self.packetizer,
-            self.last_from_first,
             source,
         )
 
