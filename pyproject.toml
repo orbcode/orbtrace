@@ -1,0 +1,36 @@
+[project]
+name = "orbtrace"
+description = "Debug and trace probe gateware"
+readme = "README.md"
+authors = [
+    {name = "Vegard Storheil Eriksen", email = "zyp@jvnv.net"},
+    {name = "Dave Marples", email = "dave@marples.net"},
+]
+license = {text = "BSD-3-Clause"}
+requires-python = ">=3.10"
+dependencies = [
+    "amaranth == 0.4.0",
+    "luna @ git+https://github.com/greatscottgadgets/luna.git@76d2eed69fc59355621f4c4c812b62994bd945b0",
+    "migen @ git+https://github.com/m-labs/migen.git@50934ad10a87ade47219b796535978b9bdf24023",
+    "litex == 2023.12",
+    "litex-boards @ git+https://github.com/litex-hub/litex-boards.git@dd27a3473bfec98ccf1644a118531eba260a7262",
+    "litespi @ git+https://github.com/litex-hub/litespi.git@96de7992df8c26d15b7bf698f615de00a18d55d3",
+    "litehyperbus @ git+https://github.com/litex-hub/litehyperbus.git@1cde460f24e06e30be7ac1cd361bb2d263528253",
+    "pythondata-cpu-vexriscv @ git+https://github.com/litex-hub/pythondata-cpu-vexriscv.git@03d8c47e49872e3db7be5a9a04e7cd74021c41f1",
+    "pythondata-software-compiler_rt @ git+https://github.com/litex-hub/pythondata-software-compiler_rt.git@fcb03245613ccf3079cc833a701f13d0beaae09d",
+    "pythondata-software-picolibc @ git+https://github.com/litex-hub/pythondata-software-picolibc.git@a5e11229885a87083ec54034f8d693ba52ea2718",
+]
+dynamic = ["version"]
+
+[project.scripts]
+orbtrace_builder = "orbtrace_builder:main"
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[tool.pdm.version]
+source = "scm"
+
+
+

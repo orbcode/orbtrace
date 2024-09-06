@@ -16,7 +16,13 @@ Full documentation for Orbtrace is available via Read The Docs at https://orbtra
 Building
 --------
 
-`./orbtrace_builder.py --platform orbtrace_mini --build`
+First install dependencies:
+
+`pdm install`
+
+Then build the gateware by running:
+
+`pdm run orbtrace_builder --platform orbtrace_mini --build`
 
 (You might also want `--profile dfu` and `--profile test` if you're working on those elements. They build in separate directories.)
 
@@ -25,14 +31,6 @@ To burn application firmware using boot button hold down the boot button while p
 `dfu-util -d 1209:3442 -a 1 -D build/orbtrace_mini/gateware/orbtrace_mini.bit`
 
 and power cycle.
-
-in addition...To ensure everything is up to date;
-
-```
-rm -rf build
-git pull --recurse-submodules
-git submodule update --init --recursive
-```
 
 To burn bootloader and application using openFPGALoader;
 

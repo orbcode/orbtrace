@@ -21,3 +21,6 @@ tags
 r
 .#*
 fp-info-cache
+/.venv/
+/.pdm-build/
+/.pdm-python
