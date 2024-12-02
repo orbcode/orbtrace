@@ -24,6 +24,7 @@ dynamic = ["version"]
 
 [project.scripts]
 orbtrace_builder = "orbtrace_builder:main"
+icebreaker_builder = "icebreaker_builder:main"
 
 [build-system]
 requires = ["pdm-backend"]
