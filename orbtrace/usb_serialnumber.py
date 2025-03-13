@@ -75,14 +75,16 @@ class USBSerialNumberHandler(USBRequestHandler):
 
         setup = self.interface.setup
 
+        get_descriptor = \
+            (setup.type == USBRequestType.STANDARD) & \
+            (setup.recipient == USBRequestRecipient.DEVICE) & \
+            (setup.request == USBStandardRequests.GET_DESCRIPTOR) & \
+            (setup.value == (DescriptorTypes.STRING << 8) | self.idx)
+
+        m.d.comb += self.interface.claim.eq(get_descriptor)
+
         with m.FSM(domain = 'usb'):
             with m.State('IDLE'):
-                get_descriptor = \
-                    (setup.type == USBRequestType.STANDARD) & \
-                    (setup.recipient == USBRequestRecipient.DEVICE) & \
-                    (setup.request == USBStandardRequests.GET_DESCRIPTOR) & \
-                    (setup.value == (DescriptorTypes.STRING << 8) | self.idx)
-
                 with m.If(setup.received & get_descriptor):
                     m.next = 'GET_DESCRIPTOR'
 

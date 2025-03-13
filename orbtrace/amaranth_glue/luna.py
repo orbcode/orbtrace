@@ -38,10 +38,10 @@ class USBDevice(migen.Module):
             [
                 ('data', [('i', 8, DIR_FANIN), ('o', 8, DIR_FANOUT), ('oe', 1, DIR_FANOUT)]),
                 ('clk', [('i', 1, DIR_FANIN)] if hasattr(pads, 'clk') else [('o', 1, DIR_FANOUT)]),
-                ('stp', 1, DIR_FANOUT),
+                ('stp', [('o', 1, DIR_FANOUT)]),
                 ('nxt', [('i', 1, DIR_FANIN)]),
                 ('dir', [('i', 1, DIR_FANIN)]),
-                ('rst', 1, DIR_FANOUT),
+                ('rst', [('o', 1, DIR_FANOUT)]),
             ],
         )
 
@@ -49,10 +49,10 @@ class USBDevice(migen.Module):
         wrapper.connect(ulpi_data.o, ulpi.data.o)
         wrapper.connect(ulpi_data.oe, ulpi.data.oe)
 
-        wrapper.connect(pads.stp, ulpi.stp)
+        wrapper.connect(pads.stp, ulpi.stp.o)
         wrapper.connect(pads.nxt, ulpi.nxt.i)
         wrapper.connect(pads.dir, ulpi.dir.i)
-        wrapper.connect(ulpi_rst, ulpi.rst)
+        wrapper.connect(ulpi_rst, ulpi.rst.o)
 
         if hasattr(pads, 'clk'):
             wrapper.connect(pads.clk, ulpi.clk.i)

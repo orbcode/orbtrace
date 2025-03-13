@@ -108,7 +108,7 @@ class MemRequestHandler(USBRequestHandler):
         setup             = self.interface.setup
 
         with m.If((setup.type == USBRequestType.VENDOR) & (setup.recipient == 3) & (setup.request == 0)):
-
+            m.d.comb += interface.claim.eq(1)
             address = Cat(setup.value, setup.index)
 
 

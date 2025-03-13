@@ -9,8 +9,8 @@ authors = [
 license = {text = "BSD-3-Clause"}
 requires-python = ">=3.10"
 dependencies = [
-    "amaranth == 0.4.0",
-    "luna @ git+https://github.com/greatscottgadgets/luna.git@76d2eed69fc59355621f4c4c812b62994bd945b0",
+    "amaranth == 0.5.4",
+    "luna-usb == 0.2.0",
     "migen @ git+https://github.com/m-labs/migen.git@50934ad10a87ade47219b796535978b9bdf24023",
     "litex == 2023.12",
     "litex-boards @ git+https://github.com/litex-hub/litex-boards.git@dd27a3473bfec98ccf1644a118531eba260a7262",

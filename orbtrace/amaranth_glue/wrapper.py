@@ -1,5 +1,5 @@
 import amaranth
-from amaranth.hdl import ir
+from amaranth.hdl import _ast, _ir
 from amaranth.back import verilog
 
 import migen
@@ -45,8 +45,7 @@ class Wrapper(migen.Module):
         connections = {}
 
         for m, n in self.connections:
-            module, name, *_ = self.amaranth_name_map[n]
-            direction = self.amaranth_dir_map[n]
+            name, direction = self.amaranth_name_map[n]
             s = f'{direction}_{name}'
 
             assert s not in connections, f'Signal {s} connected multiple times.'
@@ -58,22 +57,18 @@ class Wrapper(migen.Module):
     def generate_verilog(self):
         ports = [n for m, n in self.connections]
 
-        fragment = ir.Fragment.get(self.m, None).prepare(ports = ports)
+        fragment = _ir.Fragment.get(self.m, None).prepare(ports = ports, hierarchy = (self.name,))
 
-        v, m = verilog.convert_fragment(fragment, name = self.name)
+        v, _name_map = verilog.convert_fragment(fragment, name = self.name)
+        netlist = _ir.build_netlist(fragment, name = self.name)
 
-        self.amaranth_dir_map = fragment.ports
-        self.amaranth_name_map = m
+        self.amaranth_name_map = _ast.SignalDict((sig, (name, 'o' if name in netlist.top.ports_o else 'i')) for name, sig, _ in fragment.ports)
 
-        for name, domain in fragment.domains.items():
+        for name, domain in fragment.fragment.domains.items():
             if domain.clk in self.amaranth_name_map:
                 self.amaranth_name_map[amaranth.ClockSignal(name)] = self.amaranth_name_map[domain.clk]
-            if domain.clk in self.amaranth_dir_map:
-                self.amaranth_dir_map[amaranth.ClockSignal(name)] = self.amaranth_dir_map[domain.clk]
             if domain.rst in self.amaranth_name_map:
                 self.amaranth_name_map[amaranth.ResetSignal(name)] = self.amaranth_name_map[domain.rst]
-            if domain.rst in self.amaranth_dir_map:
-                self.amaranth_dir_map[amaranth.ResetSignal(name)] = self.amaranth_dir_map[domain.rst]
 
         return v
 

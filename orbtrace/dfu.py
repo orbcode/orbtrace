@@ -136,6 +136,7 @@ class DFUHandler(USBRequestHandler):
         interface         = self.interface
         setup             = self.interface.setup
 
+        m.d.comb += interface.claim.eq((setup.recipient == USBRequestRecipient.INTERFACE) & (setup.index == self.if_num))
         m.d.usb += self.new_request.eq(0)
 
         with m.FSM(domain = 'usb'):

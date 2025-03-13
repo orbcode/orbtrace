@@ -99,6 +99,8 @@ class PowerUSBHandler(USBRequestHandler):
 
         setup = self.interface.setup
 
+        m.d.comb += self.interface.claim.eq((setup.recipient == USBRequestRecipient.INTERFACE) & (setup.index[:8] == self.if_num))
+
         with m.FSM(domain = 'usb'):
             with m.State('IDLE'):
                 self.transition(m)
