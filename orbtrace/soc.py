@@ -6,7 +6,7 @@ from migen.genlib.cdc import PulseSynchronizer
 from litex.soc.integration.soc_core import SoCCore
 from litex.soc.integration.soc import SoCRegion
 
-from .trace import TraceCore
+from .trace.glue import TraceCore
 from .trace.usb_handler import TraceUSBHandler
 
 from .power.usb_handler import PowerUSBHandler
@@ -408,7 +408,7 @@ class OrbSoC(SoCCore):
 
     def add_trace(self):
         # Trace core.
-        self.submodules.trace = TraceCore(self.platform)
+        self.submodules.trace = TraceCore(self.platform, self.wrapper)
 
         # LEDs
         if hasattr(self, 'led_trace'):

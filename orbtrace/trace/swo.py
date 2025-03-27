@@ -1,113 +1,92 @@
-from migen import *
+from amaranth import *
+from amaranth.lib import wiring, stream, data
 
-from litex.soc.interconnect.stream import Endpoint, CombinatorialActor
+from ..stream import Packet, Serializer
 
-class PulseLengthCapture(Module):
-    def __init__(self, n_bits):
-        self.source = source = Endpoint([('count', n_bits), ('level', 1)])
+PulseLength = data.StructLayout({'level': 1, 'count': 16})
 
-        self.input_signal = Signal(2)
+class PulseLengthCapture(wiring.Component):
+    input: wiring.In(2)
+    output: wiring.Out(stream.Signature(PulseLength))
+
+    def elaborate(self, platform):
+        m = Module()
 
         state = Signal(3)
-        self.sync += state.eq(Cat(self.input_signal[1], self.input_signal[0], state[0]))
+        m.d.sync += state.eq(Cat(self.input[1], self.input[0], state[0]))
 
         add_2 = Signal()
         output_0 = Signal()
         output_1 = Signal()
 
-        self.comb += Case(state, {
+        with m.Switch(state):
             # Two more samples equal to prev.
-            0b000: add_2.eq(1),
-            0b111: add_2.eq(1),
+            with m.Case(0b000, 0b111):
+                m.d.comb += add_2.eq(1)
 
             # Two samples opposite of prev.
-            0b011: output_0.eq(1),
-            0b100: output_0.eq(1),
+            with m.Case(0b011, 0b100):
+                m.d.comb += output_0.eq(1)
 
             # One sample equal to prev and one opposite.
-            0b001: output_1.eq(1),
-            0b110: output_1.eq(1),
+            with m.Case(0b001, 0b110):
+                m.d.comb += output_1.eq(1)
 
             # Glitch or short pulse, ignore.
-            0b010: add_2.eq(1),
-            0b101: add_2.eq(1),
-        })
+            with m.Case(0b010, 0b101):
+                m.d.comb += add_2.eq(1)
 
-        count = Signal(n_bits)
+        count = Signal(16)
 
-        self.sync += [
-            source.level.eq(state[2]),
-            source.valid.eq(0),
-
-            If(count[-1],
-                source.count.eq(count),
-                source.valid.eq(1),
-                count.eq(0),
-            ),
-
-            If(add_2 & ~count[-1],
-                count.eq(count + 2),
-            ),
-
-            If(output_0,
-                source.count.eq(count),
-                source.valid.eq(1),
-                count.eq(2),
-            ),
-
-            If(output_1,
-                source.count.eq(count + 1),
-                source.valid.eq(1),
-                count.eq(1),
-            ),
+        m.d.sync += [
+            self.output.payload.level.eq(state[2]),
+            self.output.valid.eq(0),
         ]
 
-class CountToByte(CombinatorialActor):
-    def __init__(self, n_bits):
-        self.sink = sink = Endpoint([('count', n_bits), ('level', 1)])
-        self.source = source = Endpoint([('data', 8)])
+        with m.If(count[-1]):
+            m.d.sync += [
+                self.output.payload.count.eq(count),
+                self.output.valid.eq(1),
+                count.eq(0),
+            ]
 
-        self.comb += source.data.eq(sink.count)
+        with m.If(add_2 & ~count[-1]):
+            m.d.sync += [
+                count.eq(count + 2),
+            ]
 
-        super().__init__()
+        with m.If(output_0):
+            m.d.sync += [
+                self.output.payload.count.eq(count),
+                self.output.valid.eq(1),
+                count.eq(2),
+            ]
 
+        with m.If(output_1):
+            m.d.sync += [
+                self.output.payload.count.eq(count + 1),
+                self.output.valid.eq(1),
+                count.eq(1),
+            ]
 
-class ManchesterDecoder(Module):
-    def __init__(self, n_bits):
-        self.sink = sink = Endpoint([('count', n_bits), ('level', 1)])
-        self.source = source = Endpoint([('data', 1)])
+        return m
 
-        self.submodules.fsm = fsm = FSM()
+class ManchesterDecoder(wiring.Component):
+    input: wiring.In(stream.Signature(PulseLength))
+    output: wiring.Out(stream.Signature(Packet(1, has_first = True)))
 
-        short_threshold = Signal(n_bits) # 3/4 bit time
-        long_threshold = Signal(n_bits)  # 5/4 bit time
-        edge_counter   = Signal(8)       # Maximum number of edges before we force a reset (8 bytes, max 2 edges = 128 count)
+    def elaborate(self, platform):
+        m = Module()
 
-        self.sync += If(source.ready & source.valid,
-            source.first.eq(0),
-            edge_counter.eq(edge_counter+1),
-        )
+        short_threshold = Signal(16) # 3/4 bit time
+        long_threshold = Signal(16)  # 5/4 bit time
+        edge_counter = Signal(8)     # Maximum number of edges before we force a reset (8 bytes, max 2 edges = 128 count)
 
-        fsm.act('IDLE',
-            sink.ready.eq(1),
-
-            # Don't sync to something that's longer than we can count to (/4)
-            If(sink.valid & sink.level & (sink.count[-2:]==0),
-                NextState('CENTER'),
-                NextValue(source.first, 1),
-                NextValue(edge_counter, 0),
-
-                # Icky fix to 'lock' 41.66MHz & 48MHz operation. This slides towards the
-                # end of a bit at 48MHz but does work OK. It does _not_ work at 49MHz!!
-                If (sink.count>6,
-                    NextValue(short_threshold, sink.count + (sink.count >> 1)),
-                    NextValue(long_threshold, ((sink.count) << 1) + (sink.count >> 1)),
-                ).Else(
-                    NextValue(short_threshold, 8),
-                    NextValue(long_threshold, 14),
-                ),                        
-            ),
-        )
+        with m.If(self.output.ready & self.output.valid):
+            m.d.sync += [
+                self.output.payload.first.eq(0),
+                edge_counter.eq(edge_counter + 1),
+            ]
 
         short = Signal()
         long = Signal()
@@ -116,149 +95,169 @@ class ManchesterDecoder(Module):
 
         capture = Signal()
 
-        self.comb += [
-            short.eq(sink.count <= short_threshold),
-            extra_long.eq(sink.count > long_threshold),
+        m.d.comb += [
+            short.eq(self.input.payload.count <= short_threshold),
+            extra_long.eq(self.input.payload.count > long_threshold),
             long.eq(~short & ~extra_long),
             frame_reset.eq(edge_counter[-1]),
         ]
 
-        fsm.act('CENTER',
-            sink.ready.eq(1),
+        with m.FSM() as fsm:
+            with m.State('IDLE'):
+                m.d.comb += self.input.ready.eq(1)
 
-            # Long pulse from bit center takes us to the next bit center; capture.
-            If(sink.valid & long,
-                capture.eq(1),
-            ),
+                # Don't sync to something that's longer than we can count to (/4)
+                with m.If(self.input.valid & self.input.payload.level & (self.input.payload.count[-2:] == 0)):
+                    m.next = 'CENTER'
+                    m.d.sync += [
+                        self.output.payload.first.eq(1),
+                        edge_counter.eq(0),
+                    ]
 
-            # Short pulse from bit center takes us to bit edge.
-            If(sink.valid & short,
-                NextState('EDGE'),
-            ),
+                    # Icky fix to 'lock' 41.66MHz & 48MHz operation. This slides towards the
+                    # end of a bit at 48MHz but does work OK. It does _not_ work at 49MHz!!
+                    with m.If(self.input.payload.count > 6):
+                        m.d.sync += [
+                            short_threshold.eq(self.input.payload.count + (self.input.payload.count >> 1)),
+                            long_threshold.eq((self.input.payload.count << 1) + (self.input.payload.count >> 1)),
+                        ]
+                    with m.Else():
+                        m.d.sync += [
+                            short_threshold.eq(8),
+                            long_threshold.eq(14),
+                        ]
 
-            # Extra long pulse is either end bit or error.
-            If(sink.valid & extra_long,
-                NextState('IDLE'),
-            ),
+            with m.State('CENTER'):
+                m.d.comb += self.input.ready.eq(1)
 
-            # We got too many edges in this frame..reset and start again
-            If(frame_reset,
-                NextState('IDLE'),
-            ),
-        )
+                # Long pulse from bit center takes us to the next bit center; capture.
+                with m.If(self.input.valid & long):
+                    m.d.comb += capture.eq(1)
 
-        fsm.act('EDGE',
-            sink.ready.eq(1),
+                # Short pulse from bit center takes us to bit edge.
+                with m.If(self.input.valid & short):
+                    m.next = 'EDGE'
 
-            # Short pulse from bit edge takes us to bit center; capture.
-            If(sink.valid & short,
-                capture.eq(1),
-                NextState('CENTER'),
-            ),
+                # Extra long pulse is either end bit or error.
+                with m.If(self.input.valid & extra_long):
+                    m.next = 'IDLE'
 
-            # Long or extra long pulse from bit edge is either end bit or error.
-            If(sink.valid & (long | extra_long),
-                NextState('IDLE'),
-            ),
+                # We got too many edges in this frame..reset and start again
+                with m.If(frame_reset):
+                    m.next = 'IDLE'
 
-            # We got too many edges in this frame..reset and start again
-            If(frame_reset,
-                NextState('IDLE'),
-            ),
-        )
+            with m.State('EDGE'):
+                m.d.comb += self.input.ready.eq(1)
 
-        self.comb += If(capture,
-            source.data.eq(sink.level),
-            source.valid.eq(1),
-        )
+                # Short pulse from bit edge takes us to bit center; capture.
+                with m.If(self.input.valid & short):
+                    m.d.comb += capture.eq(1)
+                    m.next = 'CENTER'
 
+                # Long or extra long pulse from bit edge is either end bit or error.
+                with m.If(self.input.valid & (long | extra_long)):
+                    m.next = 'IDLE'
 
-class BitsToBytes(Module):
-    def __init__(self):
-        self.sink = sink = Endpoint([('data', 1)])
-        self.source = source = Endpoint([('data', 8)])
+                # We got too many edges in this frame..reset and start again
+                with m.If(frame_reset):
+                    m.next = 'IDLE'
+
+        with m.If(capture):
+            m.d.comb += [
+                self.output.payload.data.eq(self.input.payload.level),
+                self.output.valid.eq(1),
+            ]
+
+        return m
+
+class BitsToBytes(wiring.Component):
+    input: wiring.In(stream.Signature(Packet(1, has_first = True)))
+    output: wiring.Out(stream.Signature(8))
+
+    def elaborate(self, platform):
+        m = Module()
 
         sr = Signal(9)
 
-        self.comb += [
-            source.valid.eq(sr[0]),
-            source.data.eq(sr[1:]),
-            sink.ready.eq(~source.valid),
+        m.d.comb += [
+            self.output.valid.eq(sr[0]),
+            self.output.payload.eq(sr[1:]),
+            self.input.ready.eq(~self.output.valid),
         ]
 
-        self.sync += [
-            If(sink.valid & sink.ready,
-                sr.eq(Cat(sr[1:], sink.data)),
+        with m.If(self.input.valid & self.input.ready):
+            m.d.sync += sr.eq(Cat(sr[1:], self.input.payload.data))
 
-                If(sink.first,
-                    sr.eq(Cat(C(0x80, 8), sink.data)),
-                ),
-            ),
+            with m.If(self.input.payload.first):
+                m.d.sync += sr.eq(Cat(C(0x80, 8), self.input.payload.data))
 
-            If(source.valid & source.ready,
-                sr.eq(0x100),
-            )
-        ]
+        with m.If(self.output.valid & self.output.ready):
+            m.d.sync += sr.eq(0x100)
 
-class NRZDecoder(Module):
-    def __init__(self, n_bits):
-        self.sink = sink = Endpoint([('count', n_bits), ('level', 1)])
-        self.source = source = Endpoint([('data', 1)])
-        self.bitlen  = Signal(16, reset = 8000)
+        return m
 
-        acc = Signal(n_bits + 4 + 4)
+class NRZDecoder(wiring.Component):
+    input: wiring.In(stream.Signature(PulseLength))
+    output: wiring.Out(stream.Signature(1))
+
+    bitlen: wiring.In(16, init = 8000)
+
+    def elaborate(self, platform):
+        m = Module()
+
+        acc = Signal(PulseLength['count'].width + 4 + 4)
         cnt = Signal(4)
 
-        self.comb += [
-            source.valid.eq((acc >= self.bitlen) & (cnt < 12)),
-            sink.ready.eq(~source.valid),
+        m.d.comb += [
+            self.output.valid.eq((acc >= self.bitlen) & (cnt < 12)),
+            self.input.ready.eq(~self.output.valid),
         ]
 
-        self.sync += [
-            # No bits left in accumulator, receive a new count.
-            If(sink.ready & sink.valid,
-                acc.eq((sink.count << 4) + (self.bitlen >> 1)),
-                source.data.eq(sink.level),
+        # No bits left in accumulator, receive a new count.
+        with m.If(self.input.valid & self.input.ready):
+            m.d.sync += [
+                acc.eq((self.input.payload.count << 4) + (self.bitlen >> 1)),
+                self.output.payload.eq(self.input.payload.level),
                 cnt.eq(0),
-            ).Elif(source.valid & source.ready,
+            ]
+
+        with m.Elif(self.output.valid & self.output.ready):
+            m.d.sync += [
                 acc.eq(acc - self.bitlen), # Subtract one bit length.
                 cnt.eq(cnt + 1),
-            )
-        ]
+            ]
 
-class UARTDecoder(Module):
-    def __init__(self):
-        self.sink = sink = Endpoint([('data', 1)])
-        self.source = source = Endpoint([('data', 8)])
+        return m
 
-        self.submodules.fsm = fsm = FSM()
+class UARTDecoder(wiring.Component):
+    input: wiring.In(stream.Signature(1))
+    output: wiring.Out(stream.Signature(8))
+
+    def elaborate(self, platform):
+        m = Module()
 
         sr = Signal(10)
 
-        self.comb += [
-            source.valid.eq(sr[0] & sr[9]),
-            source.data.eq(sr[1:]),
-            sink.ready.eq(~source.valid),
+        m.d.comb += [
+            self.output.valid.eq(sr[0] & sr[9]),
+            self.output.payload.eq(sr[1:]),
+            self.input.ready.eq(~self.output.valid),
         ]
 
-        fsm.act('WAITSTART',
-            If(sink.valid & sink.ready & (sink.data == 0),
-                NextValue(sr, 0x200),
-                NextState('GETBITS'),
-            ),
-        )
+        with m.FSM() as fsm:
+            with m.State('WAITSTART'):
+                with m.If(self.input.valid & self.input.ready & (self.input.payload == 0)):
+                    m.d.sync += sr.eq(0x200)
+                    m.next = 'GETBITS'
 
-        fsm.act('GETBITS',
-            If((sink.valid & sink.ready),
-                NextValue(sr, Cat(sr[1:], sink.data)),
-            ),
-            If (sr[0],
-                NextState('WAITSTART'),
-            ),
-        )
+            with m.State('GETBITS'):
+                with m.If(self.input.valid & self.input.ready):
+                    m.d.sync += sr.eq(Cat(sr[1:], self.input.payload))
 
-        self.sync += [
-            If(source.valid & source.ready,
-                sr.eq(0x200),
-            )
-        ]
+                with m.If(sr[0]):
+                    m.next = 'WAITSTART'
+
+        with m.If(self.output.valid & self.output.ready):
+            m.d.sync += sr.eq(0x200)
+
+        return m

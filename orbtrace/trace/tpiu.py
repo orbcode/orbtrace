@@ -1,238 +1,240 @@
-from migen import *
+from amaranth import *
+from amaranth.lib import wiring, stream, data
 
-from litex.soc.interconnect.stream import Endpoint, Pipeline, CombinatorialActor, Converter
+from ..stream import Packet, Serializer
 
-class Rearrange(CombinatorialActor):
-    def __init__(self):
-        self.sink = sink = Endpoint([('data', 128)])
-        self.source = source = Endpoint([('data', 135)])
+TPIURawFrame = data.ArrayLayout(8, 16)
 
-        self.comb += source.data.eq(Cat(
-            sink.data[120], sink.data[1:8], sink.data[0],
-            sink.data[8:16], C(0, 1),
-            sink.data[121], sink.data[17:24], sink.data[16],
-            sink.data[24:32], C(0, 1),
-            sink.data[122], sink.data[33:40], sink.data[32],
-            sink.data[40:48], C(0, 1),
-            sink.data[123], sink.data[49:56], sink.data[48],
-            sink.data[56:64], C(0, 1),
-            sink.data[124], sink.data[65:72], sink.data[64],
-            sink.data[72:80], C(0, 1),
-            sink.data[125], sink.data[81:88], sink.data[80],
-            sink.data[88:96], C(0, 1),
-            sink.data[126], sink.data[97:104], sink.data[96],
-            sink.data[104:112], C(0, 1),
-            sink.data[127], sink.data[113:120], sink.data[112],
-        ))
+TPIUUnmangledByte = data.StructLayout({'data': 8, 'is_id': 1})
+TPIUUnmangledFrame = data.ArrayLayout(TPIUUnmangledByte, 15)
 
-        super().__init__()
+MuxedByte = data.StructLayout({'data': 8, 'channel': 7})
 
-class TrackStream(Module):
-    def __init__(self):
-        self.sink = sink = Endpoint([('data', 9)])
-        self.source = source = Endpoint([('channel', 7), ('data', 8)])
+class TPIUSync(wiring.Component):
+    input: wiring.In(stream.Signature(8))
+    output: wiring.Out(stream.Signature(TPIURawFrame))
+    reset_sync: wiring.In(1)
+
+    def elaborate(self, platform):
+        m = Module()
+
+        buf = Signal(129, init = 1)
+        synced = Signal()
+
+        m.d.comb += [
+            self.output.payload.eq(buf),
+            self.output.valid.eq(buf[128] & synced),
+            self.input.ready.eq(~self.output.valid),
+        ]
+
+        for byte, bit in zip(range(16), reversed(range(0, 128, 8))):
+            m.d.comb += self.output.payload[byte].eq(buf[bit:bit + 8])
+
+        with m.If(self.output.valid & self.output.ready):
+            m.d.sync += buf.eq(1)
+
+        with m.If(self.input.valid & self.input.ready):
+            with m.If(Cat(self.input.payload, buf)[:32] == 0xffffff7f):
+                m.d.sync += [
+                    synced.eq(1),
+                    buf.eq(1),
+                ]
+            with m.Elif(Cat(self.input.payload, buf)[:16] == 0xff7f):
+                m.d.sync += buf.eq(buf[8:])
+            with m.Else():
+                m.d.sync += buf.eq(Cat(self.input.payload, buf))
+
+        with m.If(self.reset_sync):
+            m.d.sync += synced.eq(0)
+
+        return m
+
+class Unmangle(wiring.Component):
+    input: wiring.In(stream.Signature(TPIURawFrame))
+    output: wiring.Out(stream.Signature(TPIUUnmangledFrame))
+
+    def elaborate(self, platform):
+        m = Module()
+
+        m.d.comb += [
+            self.output.valid.eq(self.input.valid),
+            self.input.ready.eq(self.output.ready),
+        ]
+
+        for i in range(15):
+            if i & 1 == 0:
+                m.d.comb += self.output.payload[i].is_id.eq(self.input.payload[i][0])
+                m.d.comb += self.output.payload[i].data.eq(Cat(self.input.payload[15][i // 2], self.input.payload[i][1:]))
+            else:
+                m.d.comb += self.output.payload[i].data.eq(self.input.payload[i])
+
+        return m
+
+class TrackStream(wiring.Component):
+    input: wiring.In(stream.Signature(TPIUUnmangledByte))
+    output: wiring.Out(stream.Signature(MuxedByte))
+
+    def elaborate(self, platform):
+        m = Module()
 
         channel = Signal(7)
         next_channel = Signal(7)
         next_channel_valid = Signal()
 
-        self.sync += If(sink.valid & sink.ready & next_channel_valid,
-            channel.eq(next_channel),
-            next_channel_valid.eq(0),
-        )
-
-        self.sync += If(sink.valid & sink.data[8],
-            If(sink.data[0],
-                next_channel.eq(sink.data[1:8]),
-                next_channel_valid.eq(1),
-            ).Else(
-                channel.eq(sink.data[1:8]),
-            ),
-        )
-
-        self.comb += [
-            source.channel.eq(channel),
-            source.data.eq(sink.data[0:8]),
-            If(sink.data[8],
-                sink.ready.eq(1),
-            ).Else(
-                sink.ready.eq(source.ready),
-                source.valid.eq(sink.valid),
-            ),
+        m.d.comb += [
+            self.input.ready.eq(self.output.ready),
+            self.output.valid.eq(self.input.valid & ~self.input.payload.is_id),
+            self.output.payload.data.eq(self.input.payload.data),
+            self.output.payload.channel.eq(channel),
         ]
 
-class Demux(Module):
-    def __init__(self):
-        self.sink = sink = Endpoint([('channel', 7), ('data', 8)])
-        self.source_itm = source_itm = Endpoint([('data', 8)])
-        self.source_etm = source_etm = Endpoint([('data', 8)])
-        
-        self.comb += Case(sink.channel, {
-            1: sink.connect(source_itm, omit = {'channel'}),
-            2: sink.connect(source_etm, omit = {'channel'}),
-            'default': sink.ready.eq(1),
-        })
+        with m.If(self.input.valid & self.input.payload.is_id):
+            with m.If(self.input.payload.data[0]):
+                m.d.sync += [
+                    next_channel.eq(self.input.payload.data[1:]),
+                    next_channel_valid.eq(1),
+                ]
+            with m.Else():
+                m.d.sync += channel.eq(self.input.payload.data[1:])
 
-class StripChannelZero(Module):
-    def __init__(self):
-        self.sink = sink = Endpoint([('channel', 7), ('data', 8)])
-        self.source = source = Endpoint([('channel', 7), ('data', 8)])
-        
-        self.comb += [
-            sink.connect(source),
+        with m.If(self.output.valid & self.output.ready & next_channel_valid):
+            m.d.sync += [
+                channel.eq(next_channel),
+                next_channel_valid.eq(0),
+            ]
 
-            If(sink.channel == 0,
-                sink.ready.eq(1),
-                source.valid.eq(0),
-            ),
+        return m
+
+class StripChannelZero(wiring.Component):
+    input: wiring.In(stream.Signature(MuxedByte))
+    output: wiring.Out(stream.Signature(MuxedByte))
+
+    def elaborate(self, platform):
+        m = Module()
+
+        m.d.comb += [
+            self.input.ready.eq(self.output.ready),
+            self.output.valid.eq(self.input.valid & (self.input.payload.channel != 0)),
+            self.output.payload.eq(self.input.payload),
         ]
 
-class Packetizer(Module):
-    def __init__(self):
-        self.sink = sink = Endpoint([('channel', 7), ('data', 8)])
-        self.source = source = Endpoint([('data', 8)])
+        return m
+
+class Packetizer(wiring.Component):
+    input: wiring.In(stream.Signature(MuxedByte))
+    output: wiring.Out(stream.Signature(Packet(has_last = True)))
+
+    def __init__(self, timeout = 7_500_000):
+        super().__init__()
+        self.timeout = timeout
+
+    def elaborate(self, platform):
+        m = Module()
 
         max_size = 1024
-        timeout = 7500000
 
         channel = Signal(7)
         data = Signal(8)
-        byte_cnt = Signal(max = max_size)
-        timeout_cnt = Signal(max = timeout + 1)
+        byte_cnt = Signal(range(max_size))
+        timeout_cnt = Signal(range(self.timeout + 1))
 
         start_new_packet = Signal()
 
-        self.comb += start_new_packet.eq(
-            (sink.valid & (sink.channel != channel)) |
+        m.d.comb += start_new_packet.eq(
+            (self.input.valid & (self.input.payload.channel != channel)) |
             (byte_cnt >= max_size - 1) |
             (timeout_cnt == 0))
 
-        self.sync += [
-            If(timeout_cnt,
-                timeout_cnt.eq(timeout_cnt - 1),
-            ),
-            If(sink.valid,
-                timeout_cnt.eq(timeout),
-            )
-        ]
+        with m.If(timeout_cnt):
+            m.d.sync += timeout_cnt.eq(timeout_cnt - 1)
 
-        self.submodules.fsm = fsm = FSM()
+        with m.If(self.input.valid):
+            m.d.sync += timeout_cnt.eq(self.timeout)
 
-        fsm.act('HEADER',
-            source.data.eq(sink.channel),
-            source.first.eq(1),
-            source.valid.eq(sink.valid),
-            sink.ready.eq(source.ready),
+        with m.FSM() as fsm:
+            with m.State('HEADER'):
+                m.d.comb += [
+                    self.output.payload.data.eq(self.input.payload.channel),
+                    #self.output.payload.first.eq(1),
+                    self.output.valid.eq(self.input.valid),
+                    self.input.ready.eq(self.output.ready),
+                ]
 
-            If(sink.valid & sink.ready,
-                NextState('DATA'),
-                NextValue(channel, sink.channel),
-                NextValue(byte_cnt, 0),
-                NextValue(data, sink.data),
-            ),
-        )
+                with m.If(self.input.valid & self.output.ready):
+                    m.next = 'DATA'
+                    m.d.sync += [
+                        channel.eq(self.input.payload.channel),
+                        byte_cnt.eq(0),
+                        data.eq(self.input.payload.data),
+                    ]
 
-        fsm.act('DATA',
-            source.data.eq(data),
-            source.valid.eq(sink.valid),
-            sink.ready.eq(source.ready),
+            with m.State('DATA'):
+                m.d.comb += [
+                    self.output.payload.data.eq(data),
+                    self.output.valid.eq(self.input.valid),
+                    self.input.ready.eq(self.output.ready),
+                ]
 
-            If(start_new_packet,
-                source.valid.eq(0),
-                sink.ready.eq(0),
-                NextState('END'),
-            ),
+                with m.If(start_new_packet):
+                    m.d.comb += [
+                        self.output.valid.eq(0),
+                        self.input.ready.eq(0),
+                    ]
+                    m.next = 'END'
 
-            If(sink.valid & sink.ready,
-                NextValue(data, sink.data),
-                NextValue(byte_cnt, byte_cnt + 1),
-            ),
-        )
+                with m.If(self.input.valid & self.output.ready):
+                    m.d.sync += [
+                        data.eq(self.input.payload.data),
+                        byte_cnt.eq(byte_cnt + 1),
+                    ]
 
-        fsm.act('END',
-            source.data.eq(data),
-            source.last.eq(1),
-            source.valid.eq(1),
-        
-            If(source.ready,
-                NextState('HEADER'),
-            ),
-        )
+            with m.State('END'):
+                m.d.comb += [
+                    self.output.payload.data.eq(data),
+                    self.output.payload.last.eq(1),
+                    self.output.valid.eq(1),
+                ]
 
-class TPIUDemux(Module):
-    def __init__(self):
-        self.sink = sink = Endpoint([('data', 128)])
-        self.bypass_sink = bypass_sink = Endpoint([('data', 8)])
-        self.source = source = Endpoint([('data', 8)])
+                with m.If(self.output.ready):
+                    m.next = 'HEADER'
 
-        self.bypass = Signal()
+        return m
 
-        self.submodules.rearrange = Rearrange()
-        self.submodules.converter = Converter(135, 9)
-        self.submodules.track_stream = TrackStream()
-        self.submodules.demux = Demux()
-        self.submodules.strip_channel_zero = StripChannelZero()
-        self.submodules.packetizer = Packetizer()
+class TPIUDemux(wiring.Component):
+    input: wiring.In(stream.Signature(TPIURawFrame))
+    input_bypass: wiring.In(stream.Signature(8))
+    output: wiring.Out(stream.Signature(Packet(has_last = True)))
 
-        self.submodules += Pipeline(
-            sink,
-            self.rearrange,
-            self.converter,
-            self.track_stream,
-            #self.demux,
-            self.strip_channel_zero,
-        )
+    bypass: wiring.In(1)
 
-        self.submodules += Pipeline(
-            self.packetizer,
-            source,
-        )
+    def __init__(self, timeout = 7_500_000):
+        super().__init__()
+        self.timeout = timeout
 
-        self.comb += If(self.bypass,
-            bypass_sink.ready.eq(self.packetizer.sink.ready),
-            self.packetizer.sink.valid.eq(bypass_sink.valid),
-            self.packetizer.sink.data.eq(bypass_sink.data),
-            self.packetizer.sink.channel.eq(1),
-        ).Else(
-            self.strip_channel_zero.source.connect(self.packetizer.sink),
-        )
+    def elaborate(self, platform):
+        m = Module()
 
-        #self.comb += self.demux.source_etm.connect(source)
-        #self.comb += self.demux.source_itm.ready.eq(1)
+        m.submodules.unmangle = unmangle = Unmangle()
+        m.submodules.serializer = serializer = Serializer(TPIUUnmangledFrame)
+        m.submodules.track_stream = track_stream = TrackStream()
+        m.submodules.strip_channel_zero = strip_channel_zero = StripChannelZero()
+        m.submodules.packetizer = packetizer = Packetizer(timeout = self.timeout)
 
-class TPIUSync(Module):
-    def __init__(self):
-        self.sink = sink = Endpoint([('data', 8)])
-        self.source = source = Endpoint([('data', 128)])
-        self.reset_sync = Signal()
+        wiring.connect(m, wiring.flipped(self.input), unmangle.input)
+        wiring.connect(m, unmangle.output, serializer.input)
+        wiring.connect(m, serializer.output, track_stream.input)
+        wiring.connect(m, track_stream.output, strip_channel_zero.input)
 
-        buf = Signal(129, reset = 1)
-        synced = Signal()
+        with m.If(self.bypass):
+            m.d.comb += [
+                self.input_bypass.ready.eq(packetizer.input.ready),
+                packetizer.input.valid.eq(self.input_bypass.valid),
+                packetizer.input.payload.data.eq(self.input_bypass.payload),
+                packetizer.input.payload.channel.eq(1),
+            ]
+        with m.Else():
+            wiring.connect(m, strip_channel_zero.output, packetizer.input)
 
-        self.comb += [
-            source.valid.eq(buf[128] & synced),
-            source.data.eq(buf),
-            sink.ready.eq(~source.valid),
-        ]
+        wiring.connect(m, packetizer.output, wiring.flipped(self.output))
 
-        self.sync += If(source.valid & source.ready,
-            buf.eq(1),
-        )
-
-        self.sync += If(sink.valid & sink.ready,
-            If(Cat(sink.data, buf)[:32] == 0xffffff7f,
-                # Full sync, reset buffer.
-                synced.eq(1),
-                buf.eq(1),
-            ).Elif(Cat(sink.data, buf)[:16] == 0xff7f,
-                # Half sync, drop previous byte from buffer.
-                buf.eq(buf[8:]),
-            ).Else(
-                # Regular byte, add to buffer.
-                buf.eq(Cat(sink.data, buf)),
-            )
-        )
-
-        self.sync += If(self.reset_sync,
-            synced.eq(0),
-        )
+        return m

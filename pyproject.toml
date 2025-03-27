@@ -32,5 +32,11 @@ build-backend = "pdm.backend"
 [tool.pdm.version]
 source = "scm"
 
+[tool.pdm.scripts]
+test.cmd = "pytest tests/"
 
-
+[dependency-groups]
+test = [
+    "cobs>=1.2.1",
+    "pytest>=8.3.5",
+]

@@ -1,12 +1,19 @@
-from migen import *
+from amaranth import *
+from amaranth.lib import wiring, stream
 
-from litex.soc.interconnect import stream
+from ..stream import Packet, SyncFIFOBuffered
 
-class GroupSplitter(Module):
+class GroupSplitter(wiring.Component):
+    input: wiring.In(stream.Signature(Packet(has_last = True)))
+    output_len: wiring.Out(stream.Signature(Packet(has_last = True)))
+    output_data: wiring.Out(stream.Signature(8))
+
     def __init__(self, delimiter = 0):
-        self.sink = sink = stream.Endpoint([('data', 8)])
-        self.source_data = source_data = stream.Endpoint([('data', 8)])
-        self.source_len = source_len = stream.Endpoint([('len', 8)])
+        super().__init__()
+        self.delimiter = delimiter
+
+    def elaborate(self, platform):
+        m = Module()
 
         cnt = Signal(8)
         cnt_inc = Signal()
@@ -14,219 +21,151 @@ class GroupSplitter(Module):
 
         last = Signal()
 
-        self.comb += [
-            sink.ready.eq(source_data.ready & source_len.ready & (cnt < 254) & ~last),
-            source_data.data.eq(sink.data),
-            source_len.len.eq(cnt),
-            source_len.last.eq(last),
+        m.d.comb += [
+            self.input.ready.eq(self.output_data.ready & self.output_len.ready & (cnt < 254) & ~last),
+            self.output_data.payload.eq(self.input.payload.data),
+            self.output_len.payload.data.eq(cnt),
+            self.output_len.payload.last.eq(last),
+        ]
 
-            If((sink.ready & sink.valid) | (cnt == 254) | last,
-                If((sink.data == delimiter) | (cnt == 254) | last,
-                    source_len.valid.eq(1),
-                    cnt_reset.eq(source_len.ready),
-                ),
-                If((sink.data != delimiter) & (cnt < 254) & ~last,
-                    source_data.valid.eq(1),
+        with m.If((self.input.ready & self.input.valid) | (cnt == 254) | last):
+            with m.If((self.input.payload.data == self.delimiter) | (cnt == 254) | last):
+                m.d.comb += [
+                    self.output_len.valid.eq(1),
+                    cnt_reset.eq(self.output_len.ready),
+                ]
+            with m.If((self.input.payload.data != self.delimiter) & (cnt < 254) & ~last):
+                m.d.comb += [
+                    self.output_data.valid.eq(1),
                     cnt_inc.eq(1),
-                ),
-            ),
-        ]
+                ]
 
-        self.sync += [
-            If(cnt_inc,
-                cnt.eq(cnt + 1),
-            ),
-            If(cnt_reset,
-                cnt.eq(source_data.valid),
-            ),
-            If(sink.ready & sink.valid & sink.last,
-                last.eq(1),
-            ),
-            If(source_len.ready & last,
-                last.eq(0),
-            ),
-        ]
+        with m.If(cnt_inc):
+            m.d.sync += cnt.eq(cnt + 1)
+        with m.If(cnt_reset):
+            m.d.sync += cnt.eq(self.output_data.valid)
+        with m.If(self.input.ready & self.input.valid & self.input.payload.last):
+            m.d.sync += last.eq(1)
+        with m.If(self.output_len.ready & last):
+            m.d.sync += last.eq(0)
 
-class GroupCombiner(Module):
+        return m
+
+class GroupCombiner(wiring.Component):
+    input_data: wiring.In(stream.Signature(8))
+    input_len: wiring.In(stream.Signature(Packet(has_last = True)))
+    output: wiring.Out(stream.Signature(Packet(has_last = True)))
+
     def __init__(self, delimiter = 0):
-        self.sink_data = sink_data = stream.Endpoint([('data', 8)])
-        self.sink_len = sink_len = stream.Endpoint([('len', 8)])
-        self.source = source = stream.Endpoint([('data', 8)])
+        super().__init__()
+        self.delimiter = delimiter
 
-        self.submodules.fsm = fsm = FSM()
+    def elaborate(self, platform):
+        m = Module()
 
         header = Signal(8)
         cnt = Signal(8)
         last = Signal()
 
-        self.comb += [
-            header.eq(sink_len.len),
-            If(sink_len.len >= delimiter,
-                header.eq(sink_len.len + 1),
-            ),
-        ]
+        m.d.comb += header.eq(self.input_len.payload.data),
+        with m.If(self.input_len.payload.data >= self.delimiter):
+            m.d.comb += header.eq(self.input_len.payload.data + 1),
 
-        fsm.act('HEADER',
-            sink_len.ready.eq(source.ready),
-            source.valid.eq(sink_len.valid),
-            source.last.eq(sink_len.last & (sink_len.len == 0)),
-            source.data.eq(header),
+        with m.FSM() as fsm:
+            with m.State('HEADER'):
+                m.d.comb += [
+                    self.input_len.ready.eq(self.output.ready),
+                    self.output.valid.eq(self.input_len.valid),
+                    self.output.payload.last.eq(self.input_len.payload.last & (self.input_len.payload.data == 0)),
+                    self.output.payload.data.eq(header),
+                ]
 
-            If(source.ready & source.valid & (sink_len.len > 0),
-                NextState('DATA'),
-                NextValue(cnt, sink_len.len - 1),
-                NextValue(last, sink_len.last),
-            ),
-        )
+                with m.If(self.output.ready & self.output.valid & (self.input_len.payload.data > 0)):
+                    m.next = 'DATA'
+                    m.d.sync += [
+                        cnt.eq(self.input_len.payload.data - 1),
+                        last.eq(self.input_len.payload.last),
+                    ]
 
-        fsm.act('DATA',
-            sink_data.ready.eq(source.ready),
-            source.valid.eq(sink_data.valid),
-            source.last.eq(last & (cnt == 0)),
-            source.data.eq(sink_data.data),
+            with m.State('DATA'):
+                m.d.comb += [
+                    self.input_data.ready.eq(self.output.ready),
+                    self.output.valid.eq(self.input_data.valid),
+                    self.output.payload.last.eq(last & (cnt == 0)),
+                    self.output.payload.data.eq(self.input_data.payload),
+                ]
 
-            If(source.ready & source.valid,
-                NextValue(cnt, cnt - 1),
+                with m.If(self.output.ready & self.output.valid):
+                    m.d.sync += cnt.eq(cnt - 1)
+                    with m.If(cnt == 0):
+                        m.next = 'HEADER'
 
-                If(cnt == 0,
-                    NextState('HEADER'),
-                ),
-            ),
-        )
+        return m
 
-class COBSEncoder(Module):
+class DelimiterAppender(wiring.Component):
+    input: wiring.In(stream.Signature(Packet(has_last = True)))
+    output: wiring.Out(stream.Signature(Packet(has_last = True)))
+
     def __init__(self, delimiter = 0):
-        self.sink = stream.Endpoint([('data', 8)])
-        self.source = stream.Endpoint([('data', 8)])
+        super().__init__()
+        self.delimiter = delimiter
 
-        self.submodules.group_splitter = GroupSplitter(delimiter)
-        self.submodules.fifo_data = stream.SyncFIFO([('data', 8)], 256)
-        self.submodules.fifo_len = stream.SyncFIFO([('len', 8)], 256)
-        self.submodules.group_combiner = GroupCombiner(delimiter)
+    def elaborate(self, platform):
+        m = Module()
 
-        self.comb += [
-            self.sink.connect(self.group_splitter.sink),
+        with m.FSM() as fsm:
+            with m.State('DATA'):
+                m.d.comb += [
+                    self.input.ready.eq(self.output.ready),
+                    self.output.valid.eq(self.input.valid),
+                    self.output.payload.data.eq(self.input.payload),
+                ]
 
-            self.group_splitter.source_data.connect(self.fifo_data.sink),
-            self.group_splitter.source_len.connect(self.fifo_len.sink),
+                with m.If(self.input.valid & self.input.ready & self.input.payload.last):
+                    m.next = 'DELIMITER'
 
-            self.fifo_data.source.connect(self.group_combiner.sink_data),
-            self.fifo_len.source.connect(self.group_combiner.sink_len),
+            with m.State('DELIMITER'):
+                m.d.comb += [
+                    self.output.valid.eq(1),
+                    self.output.payload.data.eq(self.delimiter),
+                    self.output.payload.last.eq(1),
+                ]
 
-            self.group_combiner.source.connect(self.source),
-        ]
+                with m.If(self.output.ready):
+                    m.next = 'DATA'
 
-class ChecksumAppender(Module):
-    def __init__(self):
-        self.sink = stream.Endpoint([('data', 8)])
-        self.source = stream.Endpoint([('data', 8)])
+        return m
 
-        self.submodules.fsm = fsm = FSM()
+class COBSEncoder(wiring.Component):
+    input: wiring.In(stream.Signature(Packet(has_last = True)))
+    output: wiring.Out(stream.Signature(Packet(has_last = True)))
 
-        checksum = Signal(8)
+    def __init__(self, *, delimiter = 0, append_delimiter = False):
+        super().__init__()
+        self.delimiter = delimiter
+        self.append_delimiter = append_delimiter
 
-        fsm.act('DATA',
-            self.sink.connect(self.source, omit = {'last'}),
+    def elaborate(self, platform):
+        m = Module()
 
-            If(self.sink.valid & self.sink.ready,
-                NextValue(checksum, checksum - self.sink.data),
-            ),
+        m.submodules.group_splitter = group_splitter = GroupSplitter(self.delimiter)
+        m.submodules.fifo_len = fifo_len = SyncFIFOBuffered(Packet(has_last = True), 256)
+        m.submodules.fifo_data = fifo_data = SyncFIFOBuffered(8, 256)
+        m.submodules.group_combiner = group_combiner = GroupCombiner(self.delimiter)
 
-            If(self.sink.valid & self.sink.ready & self.sink.last,
-                NextState('CHECKSUM'),
-            ),
-        )
+        wiring.connect(m, wiring.flipped(self.input), group_splitter.input)
+        wiring.connect(m, group_splitter.output_len, fifo_len.input)
+        wiring.connect(m, group_splitter.output_data, fifo_data.input)
+        wiring.connect(m, fifo_len.output, group_combiner.input_len)
+        wiring.connect(m, fifo_data.output, group_combiner.input_data)
 
-        fsm.act('CHECKSUM',
-            self.source.data.eq(checksum),
-            self.source.last.eq(1),
-            self.source.valid.eq(1),
+        if self.append_delimiter:
+            m.submodules.delimiter_appender = delimiter_appender = DelimiterAppender(self.delimiter)
+            wiring.connect(m, group_combiner.output, delimiter_appender.input)
+            wiring.connect(m, delimiter_appender.output, wiring.flipped(self.output))
+        else:
+            wiring.connect(m, group_combiner.output, wiring.flipped(self.output))
 
-            If(self.source.ready,
-                NextState('DATA'),
-                NextValue(checksum, 0),
-            ),
-        )
+        m.d.sync += Signal().eq(1)
 
-class DelimiterAppender(Module):
-    def __init__(self, delimiter = 0):
-        self.sink = stream.Endpoint([('data', 8)])
-        self.source = stream.Endpoint([('data', 8)])
-
-        self.submodules.fsm = fsm = FSM()
-
-        fsm.act('DATA',
-            self.sink.connect(self.source, omit = {'last'}),
-
-            If(self.sink.valid & self.sink.ready & self.sink.last,
-                NextState('DELIMITER'),
-            ),
-        )
-
-        fsm.act('DELIMITER',
-            self.source.data.eq(delimiter),
-            self.source.last.eq(1),
-            self.source.valid.eq(1),
-
-            If(self.source.ready,
-                NextState('DATA'),
-            ),
-        )
-
-class SuperFramer(Module):
-    def __init__(self, interval, threshold):
-        self.sink = sink = stream.Endpoint([('data', 8)])
-        self.source = source = stream.Endpoint([('data', 8)])
-
-        interval_cnt = Signal(max = interval + 1)
-        byte_cnt = Signal(max = threshold + 1)
-
-        flush = Signal()
-
-        data = Signal(8)
-        first = Signal(reset = 1)
-        last = Signal()
-        valid = Signal()
-
-        self.comb += [
-            sink.ready.eq(~valid | (source.ready & source.valid)),
-
-            source.data.eq(data),
-            source.first.eq(first),
-            source.last.eq(last & flush),
-            source.valid.eq(valid & (sink.valid | flush)),
-        ]
-
-        self.sync += [
-            If(source.ready & source.valid,
-                first.eq(source.last),
-                valid.eq(0),
-
-                If(last & flush,
-                    flush.eq(0),
-                ),
-
-                If(byte_cnt < threshold,
-                    byte_cnt.eq(byte_cnt + 1),
-                ),
-            ),
-
-            If(sink.ready & sink.valid,
-                data.eq(sink.data),
-                last.eq(sink.last),
-                valid.eq(1),
-            ),
-
-            If(valid & (interval_cnt < interval),
-                interval_cnt.eq(interval_cnt + 1),
-            ),
-
-            If(interval_cnt == interval,
-                byte_cnt.eq(0),
-                interval_cnt.eq(0),
-
-                If(byte_cnt < threshold,
-                    flush.eq(1),
-                ),
-            ),
-        ]
+        return m
