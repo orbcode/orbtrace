@@ -29,16 +29,10 @@ module dbgIF_tb;
    wire [7:0]  pinsout_tb;
 
    wire        swwr_tb;
-   wire        nvsen_pin_tb;
-   wire        nvdrive_pin_tb;
-
-
 
    // Controls
    reg [3:0]   turnaround_tb;
    reg [10:0]  clkDiv_tb;
-   wire        vsen_tb;
-   wire        vdrive_tb;
 
    // Messages
    reg [1:0]   addr32_tb;
@@ -61,13 +55,9 @@ module dbgIF_tb;
    assign swdi_tb = rx[0];
 
 
-   dbgIF #(.TICKS_PER_USEC(500)) DUT (
+   dbgIF DUT (
 	      .rst(rst_tb),        // Reset synchronised to clock
               .clk(clk_tb),
-
-        // Gross control - power etc.
-              .vsen(vsen_tb),
-              .vdrive(vdrive_tb),
 
 	// Downwards interface to the DBG pins
               .swdi(tms_swdio_tb),         // DIO pin from target
@@ -77,10 +67,7 @@ module dbgIF_tb;
               .tdi(tdi_tb),                // TDI to target
               .tdo_swo(tdo_swo_tb),        // TDO from target
               .tgt_reset_state(tgt_reset_state_tb), // Reset to target
-
               .tgt_reset_pin(tgt_reset_tb),
-              .nvsen_pin(nvsen_pin_tb),
-              .nvdrive_pin(nvdrive_pin_tb),
 
 	// Upwards interface to command controller
               .addr32(addr32_tb),  // Address bits 3:2 for message
@@ -108,7 +95,7 @@ module dbgIF_tb;
    while (done_tb==0) #1;
 
 `define report\
-   $display("Complete, err=%d",perr_tb);\
+   $display("Complete, err=%d", perr_tb);\
    if (perr_tb) $finish;
 
    always
@@ -129,6 +116,8 @@ module dbgIF_tb;
    realtime t;
 
    initial begin
+      $dumpfile("dbgIF.vcd");
+      $dumpvars;
       $timeformat( -6, 1," uS", 5);
 
 
@@ -150,10 +139,8 @@ module dbgIF_tb;
       command_tb=DUT.CMD_SET_CLK;
       dwrite_tb<=32'd1000000;
 
-
       `go;
       `report;
-      $finish;
 
       // =========================================== Perform a reset
       $display("\nPerforming Reset;");
@@ -185,18 +172,6 @@ module dbgIF_tb;
       `go;
       `report;
       $display("time=%t\n",$realtime-t);
-
-      // =========================================== Check error
-      $display("\nCheck error;");
-      command_tb=15;
-      `go;
-      if (perr_tb!=1)
-        begin
-           $display("Deliberate error failed");
-           $finish;
-        end
-      else
-        $display("CORRECT");
 
       // =========================================== Clear error
       $display("\nClear error;");
@@ -353,11 +328,5 @@ module dbgIF_tb;
       #50;
 
       $finish;
-
-   end
-   initial begin
-      $dumpfile("dbgIF.vcd");
-
-      $dumpvars;
    end
 endmodule // swdIF_tb

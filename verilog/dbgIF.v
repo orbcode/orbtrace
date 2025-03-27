@@ -110,7 +110,7 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
                 input [4:0]       command,                                       // Command to be performed
                 input             go,                                                            // Trigger
                 output            done,                                                         // Response
-                output reg        perr,                             // Indicator of a error in the transfer
+                output reg        perr                              // Indicator of a error in the transfer
         // ================================================================================================
 	      );
 
@@ -174,10 +174,10 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
    reg [31:0]                     divreg;                                              // Division register
    reg [22:0]                     usecsdown;                                            // usec downcounter
    reg                            cdc_go;                                        // Clock domain crossed go
-   reg [2:0] 			  rst_filter;                                // Bounce removed reset signal
+   reg [2:0]                      rst_filter;                                // Bounce removed reset signal
    reg                            JTAG_trans_os;                  // If there is a JTAG transaction pending
-   reg 	                          fallingedge;                                    // This is a falling edge
-   reg 	                          risingedge;                                      // This is a rising edge
+   reg                            fallingedge;                                    // This is a falling edge
+   reg                            risingedge;                                      // This is a rising edge
 
    reg [(CDIV_LOG2-1):0]          clkDiv;                             // Divisor per clock change to target
 
@@ -190,7 +190,11 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
    reg [2:0]                      ndevs;                                 // Number of devices in JTAG chain
    reg [3:0]                      current_dev;                             // The currently selected device
    reg [29:0]                     irlenx;                                  // Length of each IR-1, 5x5 bits
-   reg [3:0] 			  ir;                                           // Last written ir contents
+   reg [3:0]                      ir;                                           // Last written ir contents
+
+   // nRST state tracking
+   reg reset_triggered;
+   reg local_tgt_reset;
 
    // DBG (adiv protocol level) related
    reg [22:0]                     rst_timeout;                                  // Default time for a reset
@@ -269,7 +273,7 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
 			  :(active_mode==MODE_JTAG)?jtag_tck
 			  :root_tgtclk;
 
-   assign tgt_reset_pin = ~((active_mode==MODE_SWJ)?pinw_nreset:(dbg_state!=ST_DBG_RESETTING));
+   assign tgt_reset_pin = local_tgt_reset;
                           //   nReset/nSRST       --   nTRST   --    TDO     TDI  SWDIO   SWCLK
    assign pinsout       = { (rst_filter==3'b111), 1'b1, 1'b1, swwr, tdo_swo, tdi, swdi, tck_swclk };
 
@@ -345,6 +349,38 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
 
    assign pinw_swclk = pinsin[8+0] ?pinsin[0]:1'b1;
 
+   always @(posedge clk, posedge rst)
+     begin
+        // If we're being reset, undrive the nRST pin and reset the state tracking for it
+        if (rst)
+          begin
+            local_tgt_reset <= 1'b1;
+            reset_triggered <= 1'b0;
+          end
+        else
+          begin
+            // Default to honouring the current direct write state for the pin
+            local_tgt_reset <= ~pinw_nreset;
+            // If we're in a mode other than SWJ
+            if (active_mode != MODE_SWJ)
+              begin
+                // And a reset is requested
+                if (dbg_state == ST_DBG_RESETTING)
+                  begin
+                    // Actually do the reset
+                    local_tgt_reset <= 1'b0;
+                    reset_triggered <= 1'b1;
+                  end
+                // Otherwise, if a reset was and has now been releaseed, reset the state
+                else if (reset_triggered == 1'b1)
+                  begin
+                    local_tgt_reset <= 1'b1;
+                    reset_triggered <= 1'b0;
+                  end
+              end
+          end
+     end
+
    ////////////////////////////////////////////////////////////////////////////////////////////////////////
    always @(posedge clk, posedge rst)
 
@@ -359,6 +395,8 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
 	     idleCycles  <= MIN_IDLE_CYCLES;
 	     turnaround  <= 0;
              current_dev <= 4'b1000;
+             active_mode <= MODE_LOCAL;
+             pinw_nreset <= 1;
 	  end
 	else
           begin
@@ -367,7 +405,8 @@ module dbgIF #(parameter CLK_FREQ=100000000, parameter DEFAULT_SWCLK=1000000, pa
 	     rst_filter  <= {rst_filter[1],rst_filter[0],tgt_reset_state};
 
 	     // Deal with any immediate writes
-	     pinw_nreset <= pinsin[8+7]?pinsin[7]:1;
+             if (pinsin[8+7])
+	       pinw_nreset <= pinsin[7];
 	     pinw_tdi    <= pinsin[8+2]?pinsin[2]:1;
 	     pinw_swwr   <= pinsin[8+4]?pinsin[4]:0;
 	     pinw_swdo   <= pinsin[8+1]?pinsin[1]:0;
