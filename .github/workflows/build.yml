@@ -8,16 +8,16 @@ jobs:
   orbtrace_mini:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: recursive 
       - run: git fetch --prune --unshallow --no-recurse-submodules
-      - uses: YosysHQ/setup-oss-cad-suite@v2
+      - uses: YosysHQ/setup-oss-cad-suite@v3
       - uses: gregdavill/setup-riscv-gnu-toolchain@v2.0
       - run: python3 -m pip install pdm meson ninja
       - run: pdm install
       - run: pdm run orbtrace_builder --platform orbtrace_mini --build
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: orbtrace_mini
           path: |
@@ -27,16 +27,16 @@ jobs:
   orbtrace_mini_dfu:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: recursive 
       - run: git fetch --prune --unshallow --no-recurse-submodules
-      - uses: YosysHQ/setup-oss-cad-suite@v2
+      - uses: YosysHQ/setup-oss-cad-suite@v3
       - uses: gregdavill/setup-riscv-gnu-toolchain@v2.0
       - run: python3 -m pip install pdm meson ninja
       - run: pdm install
       - run: pdm run orbtrace_builder --platform orbtrace_mini --profile dfu --build 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: orbtrace_mini_dfu
           path: |
@@ -46,16 +46,16 @@ jobs:
   orbtrace_mini_test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: recursive 
       - run: git fetch --prune --unshallow --no-recurse-submodules
-      - uses: YosysHQ/setup-oss-cad-suite@v2
+      - uses: YosysHQ/setup-oss-cad-suite@v3
       - uses: gregdavill/setup-riscv-gnu-toolchain@v2.0
       - run: python3 -m pip install pdm meson ninja
       - run: pdm install
       - run: pdm run orbtrace_builder --platform orbtrace_mini --profile test --build 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: orbtrace_mini_test
           path: |
