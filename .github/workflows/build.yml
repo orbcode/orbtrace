@@ -61,3 +61,15 @@ jobs:
           path: |
             build/orbtrace_mini_test/gateware/orbtrace_mini.bit
             build/orbtrace_mini_test/gateware/csr.csv
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - run: git fetch --prune --unshallow --no-recurse-submodules
+      - uses: YosysHQ/setup-oss-cad-suite@v3
+      - run: python3 -m pip install pdm
+      - run: pdm install -dG test
+      - run: pdm test
