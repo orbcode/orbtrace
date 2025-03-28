@@ -79,6 +79,8 @@ class WindowsRequestHandler(USBRequestHandler):
 		]
 
 		with m.If(self.handlerCondition(setup)):
+			m.d.comb += interface.claim.eq(1)
+
 			with m.FSM(domain = 'usb'):
 				# IDLE -- not handling any active request
 				with m.State('IDLE'):
