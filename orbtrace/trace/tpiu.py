@@ -182,7 +182,7 @@ class Packetizer(wiring.Component):
                     ]
                     m.next = 'END'
 
-                with m.If(self.input.valid & self.output.ready):
+                with m.If(self.input.valid & self.input.ready):
                     m.d.sync += [
                         data.eq(self.input.payload.data),
                         byte_cnt.eq(byte_cnt + 1),

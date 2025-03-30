@@ -2,10 +2,35 @@ from sim_helpers import *
 
 from amaranth.sim import Simulator, SimulatorContext
 
-from orbtrace.trace.tpiu import TPIUDemux
+from orbtrace.trace import tpiu
 
-def test_serializer():
-    dut = TPIUDemux(timeout = 1000)
+def test_packetizer():
+    dut = tpiu.Packetizer(timeout = 1000)
+
+    sim = Simulator(dut)
+    sim.add_clock(1e-6)
+
+    @sim.add_testbench
+    async def input_testbench(ctx: SimulatorContext):
+        await ctx.tick()
+
+        for i in range(1024 + 512):
+            await stream_put(ctx, dut.input, {'channel': 1, 'data': i & 0xff})
+    
+    @sim.add_testbench
+    async def output_testbench(ctx: SimulatorContext):
+        assert await recv_packet(ctx, dut.output) == [1, *((i & 0xff) for i in range(1024))]
+        assert await recv_packet(ctx, dut.output) == [1, *((i & 0xff) for i in range(512))]
+
+    @sim.add_process
+    async def timeout(ctx: SimulatorContext):
+        await ctx.tick().repeat(10_000)
+        raise TimeoutError('Simulation timed out')
+
+    sim.run()
+
+def test_demux():
+    dut = tpiu.TPIUDemux(timeout = 1000)
 
     sim = Simulator(dut)
     sim.add_clock(1e-6)
