@@ -1,5 +1,7 @@
 from sim_helpers import *
 
+import itertools
+
 from amaranth.sim import Simulator, SimulatorContext
 
 from orbtrace.trace import tpiu
@@ -21,6 +23,32 @@ def test_packetizer():
     async def output_testbench(ctx: SimulatorContext):
         assert await recv_packet(ctx, dut.output) == [1, *((i & 0xff) for i in range(1024))]
         assert await recv_packet(ctx, dut.output) == [1, *((i & 0xff) for i in range(512))]
+
+    @sim.add_process
+    async def timeout(ctx: SimulatorContext):
+        await ctx.tick().repeat(10_000)
+        raise TimeoutError('Simulation timed out')
+
+    sim.run()
+
+def test_packetizer_slow_timeout():
+    dut = tpiu.Packetizer(timeout = 1000)
+
+    sim = Simulator(dut)
+    sim.add_clock(1e-6)
+
+    @sim.add_process
+    async def input_testbench(ctx: SimulatorContext):
+        await ctx.tick()
+
+        for i in itertools.count():
+            await stream_put(ctx, dut.input, {'channel': 1, 'data': i & 0xff})
+            await ctx.tick().repeat(100)
+
+    @sim.add_testbench
+    async def output_testbench(ctx: SimulatorContext):
+        assert await recv_packet(ctx, dut.output) == [1, *((i & 0xff) for i in range(10))]
+        assert await recv_packet(ctx, dut.output) == [1, *((i & 0xff) for i in range(10, 20))]
 
     @sim.add_process
     async def timeout(ctx: SimulatorContext):

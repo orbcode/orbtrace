@@ -148,9 +148,6 @@ class Packetizer(wiring.Component):
         with m.If(timeout_cnt):
             m.d.sync += timeout_cnt.eq(timeout_cnt - 1)
 
-        with m.If(self.input.valid):
-            m.d.sync += timeout_cnt.eq(self.timeout)
-
         with m.FSM() as fsm:
             with m.State('HEADER'):
                 m.d.comb += [
@@ -166,6 +163,7 @@ class Packetizer(wiring.Component):
                         channel.eq(self.input.payload.channel),
                         byte_cnt.eq(0),
                         data.eq(self.input.payload.data),
+                        timeout_cnt.eq(self.timeout),
                     ]
 
             with m.State('DATA'):
