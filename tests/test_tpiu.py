@@ -7,7 +7,7 @@ from amaranth.sim import Simulator, SimulatorContext
 from orbtrace.trace import tpiu
 
 def test_packetizer():
-    dut = tpiu.Packetizer(timeout = 1000)
+    dut = tpiu.Packetizer(timeout = 2000)
 
     sim = Simulator(dut)
     sim.add_clock(1e-6)
