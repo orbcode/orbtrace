@@ -13,6 +13,51 @@ On the TRACE side primary the gateware exports a USB-Bulk endpoint carrying 1-4 
 
 Full documentation for Orbtrace is available via Read The Docs at https://orbtrace.readthedocs.io/en/latest/. You should also checkout https://orbcode.org/.
 
+Hardware
+--------
+
+<img src="https://orbcode.org/wp-content/uploads/2021/11/ot-1-1024x995.png" alt="drawing" width="50%"/>
+
+### Connectors
+
+Documentation for the 10 pin coresight connector can be found at https://developer.arm.com/documentation/100956/0529/Arm-DSTREAM-Target-Interface-Connections/The-CoreSight-10-connector-pinouts-and-interface-signals/About-the-CoreSight-10-connector?lang=en
+
+Documentation for the 20 pin coresight connector can be found at https://developer.arm.com/documentation/100956/0529/Arm-DSTREAM-Target-Interface-Connections/The-CoreSight-20-connector-pinouts-and-interface-signals/About-the-CoreSight-20-connector?lang=en
+
+The DBG connector is a 2.54mm breakout of the JTAG/SWD pins on the 10 and 20 pins connectors
+
+The GPIO connector is TBD
+
+### Power
+
+Vtref pushes power out of the pin that is used as the reference supply for the buffers...in most cases that can be used to power boards downstream of the regulator provided you don't already have a power supply connected and turned off (which causes backfreeding and very upset regulators). Vtpwr, which only exists on the 20 pin and side connectors, is generally upstream of the regulator and is really a more 'proper' way to power a board. OTOH pretty much everyone powers boards via vtref, so its sort of an established standard by now.
+
+Power needs to be supplied to the IO buffers either through Vtref/Vtpwr or as an input on Vtref (pin 1 of either the 10 or 20 pin connectors or labelled pin on side connectors).
+
+Ortrace has command line options to set voltage and enable power on Vtpwr or Vtref.
+
+```
+orbtrace -p vtpwr,3.3 -e vtpwr,on
+orbtrace -p vtref,3.3 -e vtref,on
+```
+
+### LEDs
+
+| LED    | Colour | Description |
+|--------|--------|-------------|
+| VTPwr  | Blue   | Power to DUT is on |
+| VTRef  | Blue   | Power to or from DUT is on (from is WIP) |
+| Trace  | Green  | Clock and Data present |
+|        | Amber  | Clock present |
+|        | Red    | Overrun |
+| Debug  | Green  | Running |
+|        | Amber  | Connected |
+| Status | Red    | Not ready |
+|        | Green  | Ready |
+|        | Purple | Bootloader mode |
+| Power  | Green  | 5V Power on at USB C connector
+
+
 Building
 --------
 
